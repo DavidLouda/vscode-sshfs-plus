@@ -1,4 +1,3 @@
-
 import type { FileSystemConfig } from 'common/fileSystemConfig';
 import * as vscode from 'vscode';
 import { loadConfigs, reloadWorkspaceFolderConfigs } from './config';
@@ -158,4 +157,16 @@ export function activate(context: vscode.ExtensionContext) {
   subscribe(manager.connectionManager.onConnectionAdded(async con => {
     await reloadWorkspaceFolderConfigs(con.actualConfig.name);
   }));
+}
+
+export function deactivate() {
+  Logging.info`Extension deactivating, closing all connections...`;
+  const conns = MANAGER?.connectionManager;
+  if (conns) {
+    for (const conn of conns.getActiveConnections()) {
+      conns.closeConnection(conn, 'extensionDeactivate');
+    }
+  }
+  MANAGER = undefined;
+  Logging.info`Extension deactivated`;
 }

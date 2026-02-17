@@ -32,14 +32,14 @@ class CopyPuttyExecutable {
         // @ts-ignore
         const target = join(compiler.options.output.path, '../util/pagent.exe');
         compiler.hooks.beforeRun.tapPromise('CopyPuttyExecutable-BeforeRun', () => new Promise((resolve, reject) => {
-            fs.exists(path, exists => exists ? resolve() : reject(`Couldn't find executable at: ${path}`));
+            fs.existsSync(path) ? resolve() : reject(`Couldn't find executable at: ${path}`);
         }));
         compiler.hooks.emit.tapPromise('CopyPuttyExecutable-Emit', async () => {
-            /** @type {Buffer} */
-            const data = await wrap(cb => fs.readFile(path, cb));
-            await wrap(cb => fs.exists(dirname(target), res => cb(null, res))).then(
-                exists => !exists && wrap(cb => fs.mkdir(dirname(target), cb))
-            );
+            const data = await fs.promises.readFile(path);
+            const targetDir = dirname(target);
+            if (!fs.existsSync(targetDir)) {
+                await fs.promises.mkdir(targetDir, { recursive: true });
+            }
             await wrap(cb => compiler.outputFileSystem.writeFile(target, data, cb));
             console.log(`[CopyPuttyExecutable] Wrote '${path}' to '${target}'`);
         });

@@ -1,6 +1,14 @@
 
 # Changelog
 
+## v2.1.0 — SSH FS Plus (2026-02-17)
+
+### Improvements
+
+- **`deactivate()` handler** — extension now properly closes all SSH connections on shutdown/reload for clean resource cleanup
+- **Engine bump to `^1.100.0`** — enables access to modern VS Code APIs (finalized Quick Input Button Location APIs, etc.)
+- **Webpack modernization** — replaced deprecated `fs.exists()` with `fs.existsSync` / `fs.promises` in build config
+
 ## v2.0.0 — SSH FS Plus (2026-02-17)
 
 > First release of **SSH FS Plus**, an enhanced fork of [SSH FS](https://github.com/SchoofsKelvin/vscode-sshfs) by [Kelvin Schoofs](https://github.com/SchoofsKelvin).

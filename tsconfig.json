@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "strictNullChecks": true,
+        "module": "esnext",
+        "moduleResolution": "node",
+        "target": "ES2019",
+        "outDir": "out",
+        "lib": [
+            "ES2019"
+        ],
+        "sourceMap": true,
+        "rootDir": "src"
+    },
+    "compileOnSave": true,
+    "include": [
+        "src"
+    ]
+}

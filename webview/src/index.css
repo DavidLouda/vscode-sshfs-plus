@@ -1,0 +1,59 @@
+
+/* vscode CSS variables: https://code.visualstudio.com/api/references/theme-color#base-colors */
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+}
+
+div.App {
+  max-width: 800px;
+  padding: 20px;
+}
+
+div.Window {
+  padding: 5px;
+  margin: 5px;
+}
+
+button {
+  background: var(--vscode-settings-dropdownBackground);
+  border: 1px solid var(--vscode-settings-dropdownBorder);
+  color: var(--vscode-settings-dropdownForeground);
+  font-weight: 200;
+  border-radius: 3px;
+  padding: 8px;
+  margin: 5px;
+  width: auto;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: inherit;
+}
+button:hover {
+  font-weight: 500;
+}
+button.cancel {
+  background-color: rgb(107, 107, 107);
+  border-color: rgb(177, 177, 177);
+  color: rgb(255, 255, 255);
+}
+button.delete {
+  background-color: rgb(156, 14, 14);
+  border-color: rgb(179, 17, 17);
+  color: rgb(255, 255, 255);
+}
+button.confirm {
+  background-color: rgb(14, 99, 156);
+  border-color: rgb(18, 118, 185);
+  color: rgb(255, 255, 255);
+}
+
+/* Theme colors, *especially* dropdown ones, don't always play nice */
+body.vscode-light {
+  --vscode-settings-dropdownForeground: var(--vscode-settings-textInputForeground);
+}
+
+/* Also missing "general" button colors for warn, error/delete, save/confirm/ok, ... */

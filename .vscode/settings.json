@@ -1,0 +1,35 @@
+{
+  "typescript.tsdk": ".yarn/sdks/typescript/lib",
+  "files.exclude": {
+    "*.vsix": true,
+    "**/*.lock": true,
+    "**/node_modules/": true,
+    "dist/": true,
+    "util/": true,
+    "common/out": true,
+    "webview/build/": true,
+    ".yarn/": true,
+    ".yarnrc.yml": true,
+    ".pnp.*": true,
+    "LICENSE.txt": true,
+    "**/.*ignore": true,
+    "**/.gitattributes": true,
+    "**/.eslintcache": true,
+    "**/webpack.config.js": true,
+    "webpack.plugin.js": true,
+    "**/tslint.json": true,
+    "**/tsconfig.json": true
+  },
+  "search.exclude": {
+    "**/.yarn": true,
+    "**/.pnp.*": true
+  },
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.quoteStyle": "single",
+  "prettier.prettierPath": ".yarn/sdks/prettier/index.js",
+  "markdownlint.config": {
+    "no-duplicate-header": {
+      "allow_different_nesting": true
+    }
+  }
+}

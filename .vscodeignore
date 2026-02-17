@@ -1,0 +1,17 @@
+
+**
+
+!package.json
+!README.md
+!LICENSE.txt
+!CHANGELOG.md
+!dist/*.js
+!util
+!resources/config
+!resources/Logo.png
+!resources/icon.svg
+!media
+!webview/build/index.html
+!webview/build/static/css/*.css
+!webview/build/static/js/*.js
+!webview/build/static/js/*.LICENSE.txt

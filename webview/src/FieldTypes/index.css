@@ -1,0 +1,218 @@
+div.Field {
+    padding: 20px 9px 3px 9px;
+}
+
+div.Field > div.label {
+    display: inline-block;
+    font-size: 110%;
+    font-weight: 600;
+}
+
+div.Field > div.optional {
+    display: inline-block;
+    padding-left: 10px;
+    opacity: 0.75;
+}
+
+div.Field > div.description {
+    margin-top: 3px;
+    opacity: 0.75;
+}
+div.Field > div.error {
+    color: var(--vscode-errorForeground);
+    margin: 5px 0 -5px 0;
+}
+
+div.Field p.warning {
+    color: var(--vscode-editorWarning-foreground);
+    margin: 5px 0 -5px 0;
+}
+
+div.Field > div.value {
+    margin-top: 9px;
+    min-width: 200px;
+    max-width: 500px;
+}
+
+div.Field input {
+    background-color: var(--vscode-settings-textInputBackground);
+    color: var(--vscode-settings-textInputForeground);
+    border: 1px solid var(--vscode-settings-textInputBorder);
+    height: 100%;
+    width: 100%;
+    padding: 3px;
+    box-sizing: border-box;
+}
+
+div.FieldDropdown {
+    background: var(--vscode-settings-dropdownBackground);
+    color: var(--vscode-settings-dropdownForeground);
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    position: relative;
+    cursor: pointer;
+}
+
+div.FieldDropdown > ul.list {
+    background: var(--vscode-settings-dropdownBackground);
+    color: var(--vscode-settings-dropdownForeground);
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    z-index: 1000;
+    position: absolute;
+    width: 100%;
+    max-height: 750%;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+div.FieldDropdown > .current,
+div.FieldDropdown ul.list > li {
+    height: 1em;
+    padding: 5px;
+    list-style: none;
+}
+div.FieldDropdown ul.list > li {
+    border-top: 1px solid var(--vscode-settings-dropdownListBorder);
+}
+
+div.FieldDropdown > div.close {
+    width: 100%;
+    height: 100%;
+    position: static;
+    z-index: 999;
+    content: " ";
+}
+
+div.FieldDropdownWithInput {
+    position: relative;
+    background: none;
+    height: 1em;
+    padding: 5px;
+}
+div.FieldDropdownWithInput > input.current {
+    position: absolute;
+    background: var(--vscode-settings-textInputBackground);
+    color: var(--vscode-settings-textInputForeground);
+    border: none;
+    padding: 5px;
+    box-sizing: border-box;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+div.FieldDropdownWithInput ul.list {
+    top: 100%;
+    left: 0;
+}
+
+div.FieldDropdown p.arrow,
+div.FieldDropdownWithInput p.arrow {
+    z-index: 999;
+    top: 0;
+    position: absolute;
+    padding: 5px;
+    right: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+div.FieldList > div.adder {
+    display: flex;
+}
+div.FieldList > div.adder > div.Field {
+    padding: 0;
+    flex-grow: 1;
+}
+div.FieldList button {
+    height: 1em;
+    padding: 5px;
+    margin: 9px 0 0 5px;
+    box-sizing: content-box;
+    border-radius: 0;
+}
+div.FieldList > li {
+    background: var(--vscode-settings-dropdownBackground);
+    color: var(--vscode-settings-dropdownForeground);
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    position: relative;
+    display: flex;
+    height: 1em;
+    padding: 5px;
+    margin: 5px 0;
+}
+div.FieldList > li > p {
+    margin: auto;
+    flex-grow: 1;
+}
+div.FieldList > li > button {
+    margin: -4px;
+    padding: 3px;
+    height: 100%;
+}
+
+div.FieldPath {
+    position: relative;
+    background: none;
+    height: 1em;
+    padding: 5px;
+}
+div.FieldPath > input {
+    position: absolute;
+    background: var(--vscode-settings-textInputBackground);
+    color: var(--vscode-settings-textInputForeground);
+    padding: 5px;
+    box-sizing: border-box;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+div.FieldPath > button {
+    z-index: 999;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    position: absolute;
+    padding: 5px;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--vscode-settings-dropdownBorder);
+}
+
+div.FieldCheckbox > .description {
+    display: none;
+}
+
+.checkbox > .checkbox-box {
+    --checkbox-size: 23px;
+    max-width: none;
+    min-width: var(--checkbox-size);
+    min-height: var(--checkbox-size);
+}
+
+.checkbox > .checkbox-box.checkbox-small {
+    --checkbox-size: 18px;
+}
+
+.checkbox > .checkbox-box > .description {
+    opacity: 0.75;
+    margin-left: calc(var(--checkbox-size) + 10px);
+}
+
+.checkbox > .checkbox-box > .checkbox {
+    float: left;
+    height: var(--checkbox-size);
+    width: var(--checkbox-size);
+    font-size: var(--checkbox-size);
+    line-height: var(--checkbox-size);
+    background: var(--vscode-settings-checkboxBackground);
+    color: var(--vscode-settings-checkboxForeground);
+    border: 1px solid var(--vscode-settings-checkboxBorder);
+}
+
+.checkbox > .checkbox-box > .checkbox.checked::before {
+    content: "\2713";
+    display: block;
+    text-align: center;
+}

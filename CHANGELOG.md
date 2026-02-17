@@ -1,6 +1,16 @@
 
 # Changelog
 
+## v2.2.0 — SSH FS Plus (2026-02-17)
+
+### Remote Search Providers (Copilot / AI Agent Performance)
+
+- **`FileSearchProvider`** — file search (Ctrl+P) now runs `find` directly on the remote server instead of recursively walking directories via SFTP. Makes file discovery 10–100× faster for Copilot agent
+- **`TextSearchProvider`** — text search (Ctrl+Shift+F) now runs `grep` on the remote server instead of downloading and scanning every file. Makes grep operations 10–100× faster for Copilot agent
+- Both providers are registered via proposed VS Code APIs with graceful runtime fallback
+- Smart default excludes (`.git`, `node_modules`, `.yarn`, `__pycache__`, `.cache`)
+- Fuzzy file name matching, case-insensitive search, regex support
+
 ## v2.1.0 — SSH FS Plus (2026-02-17)
 
 ### Improvements

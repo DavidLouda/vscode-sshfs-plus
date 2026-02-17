@@ -5,6 +5,7 @@ import type { Connection } from './connection';
 import { FileSystemRouter } from './fileSystemRouter';
 import { Logging, setDebug } from './logging';
 import { Manager } from './manager';
+import { registerSearchProviders } from './searchProvider';
 import type { SSHPseudoTerminal } from './pseudoTerminal';
 import { ConfigTreeProvider, ConnectionTreeProvider } from './treeViewManager';
 import { PickComplexOptions, pickComplex, pickConnection, setGetExtensionUri, setupWhenClauseContexts } from './ui-utils';
@@ -63,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
     subscribe(vscode.commands.registerCommand(command, callback, thisArg));
 
   subscribe(vscode.workspace.registerFileSystemProvider('ssh', new FileSystemRouter(manager), { isCaseSensitive: true }));
+  registerSearchProviders(manager.connectionManager, subscribe);
   subscribe(vscode.window.createTreeView('sshfs-configs', { treeDataProvider: new ConfigTreeProvider(), showCollapseAll: true }));
   const connectionTreeProvider = new ConnectionTreeProvider(manager.connectionManager);
   subscribe(vscode.window.createTreeView('sshfs-connections', { treeDataProvider: connectionTreeProvider, showCollapseAll: true }));

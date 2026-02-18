@@ -70,7 +70,7 @@ async function readConfigFile(file: vscode.Uri, quiet: boolean): Promise<FileSys
   if (!parsed || errors.length) {
     const formatted = errors.map(({ error, offset, length }) => `${printParseErrorCode(error)} at ${offset}-${offset + length}`);
     logging.error`Couldn't parse ${file} due to invalid JSON:\n${formatted.join('\n')}`;
-    vscode.window.showErrorMessage(`Couldn't parse the SSH FS config file at ${file}, invalid JSON`);
+    vscode.window.showErrorMessage(`Couldn't parse the SSH FS Plus config file at ${file}, invalid JSON`);
     return [];
   }
   parsed.forEach(c => c._locations = [c._location = file.toString()]);
@@ -192,11 +192,11 @@ function applyConfigLayers(): void {
   // Let the user do some cleaning with the raw configs
   for (const conf of all) {
     if (!conf.name) {
-      logging.error`Skipped an invalid SSH FS config (missing a name field):\n${conf}`;
-      vscode.window.showErrorMessage(`Skipped an invalid SSH FS config (missing a name field)`);
+      logging.error`Skipped an invalid SSH FS Plus config (missing a name field):\n${conf}`;
+      vscode.window.showErrorMessage(`Skipped an invalid SSH FS Plus config (missing a name field)`);
     } else if (invalidConfigName(conf.name)) {
-      logging.warning(`Found a SSH FS config with the invalid name "${conf.name}", prompting user how to handle`);
-      vscode.window.showErrorMessage(`Invalid SSH FS config name: ${conf.name}`, 'Rename', 'Delete', 'Skip').then(async (answer) => {
+      logging.warning(`Found a SSH FS Plus config with the invalid name "${conf.name}", prompting user how to handle`);
+      vscode.window.showErrorMessage(`Invalid SSH FS Plus config name: ${conf.name}`, 'Rename', 'Delete', 'Skip').then(async (answer) => {
         if (answer === 'Rename') {
           const name = await vscode.window.showInputBox({ prompt: `New name for: ${conf.name}`, validateInput: invalidConfigName, placeHolder: 'New name' });
           if (name) {
@@ -208,8 +208,8 @@ function applyConfigLayers(): void {
         } else if (answer === 'Delete') {
           return deleteConfig(conf);
         }
-        logging.warning`Skipped SSH FS config '${conf.name}'`;
-        vscode.window.showWarningMessage(`Skipped SSH FS config '${conf.name}'`);
+        logging.warning`Skipped SSH FS Plus config '${conf.name}'`;
+        vscode.window.showWarningMessage(`Skipped SSH FS Plus config '${conf.name}'`);
       });
     }
   }
@@ -270,7 +270,7 @@ function applyConfigLayers(): void {
   }
   loadedConfigs = loadedConfigs.map(c => getOrBuild(c.name)?.result).filter(isFileSystemConfig);
   if (loadedConfigs.length < buildData.size) {
-    vscode.window.showErrorMessage(`Skipped some SSH FS configs due to incorrect "extend" options`, 'See logs').then(answer => {
+    vscode.window.showErrorMessage(`Skipped some SSH FS Plus configs due to incorrect "extend" options`, 'See logs').then(answer => {
       if (answer === 'See logs') OUTPUT_CHANNEL.show(true);
     });
   }

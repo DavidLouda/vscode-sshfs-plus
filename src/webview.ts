@@ -1,11 +1,10 @@
 
 import { getLocations } from 'common/fileSystemConfig';
 import type { Message, Navigation } from 'common/webviewMessages';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { deleteConfig, getConfigs, loadConfigs, updateConfig } from './config';
 import { DEBUG, LOGGING_NO_STACKTRACE, Logging as _Logging } from './logging';
+import { getExtensionUri } from './ui-utils';
 import { toPromise } from './utils';
 
 const Logging = _Logging.scope('WebView');
@@ -13,9 +12,16 @@ const Logging = _Logging.scope('WebView');
 let webviewPanel: vscode.WebviewPanel | undefined;
 let pendingNavigation: Navigation | undefined;
 
-function getExtensionPath(): string | undefined {
-  const ext = vscode.extensions.getExtension(vscode.extensions.all.find(e => e.id.endsWith('.vscode-sshfs'))?.id || 'Kelvin.vscode-sshfs');
-  return ext && ext.extensionPath;
+function getExtensionUri2(): vscode.Uri | undefined {
+  // Use the centralized extensionUri set in extension.ts via setGetExtensionUri
+  const uri = getExtensionUri?.('');
+  if (uri) return uri;
+  // Fallback: search by extension ID
+  const ext = vscode.extensions.getExtension(
+    vscode.extensions.all.find(e => e.id.endsWith('.vscode-sshfs-plus') || e.id.endsWith('.vscode-sshfs'))?.id
+    || 'DavidLouda.vscode-sshfs-plus'
+  );
+  return ext?.extensionUri;
 }
 
 async function getDebugContent(): Promise<string | false> {
@@ -41,21 +47,21 @@ async function getDebugContent(): Promise<string | false> {
 
 export async function open() {
   if (!webviewPanel) {
-    const extensionPath = getExtensionPath();
-    webviewPanel = vscode.window.createWebviewPanel('sshfs-settings', 'SSH-FS', vscode.ViewColumn.One, { enableFindWidget: true, enableScripts: true });
+    const extUri = getExtensionUri2();
+    webviewPanel = vscode.window.createWebviewPanel('sshfs-settings', 'SSH FS Plus', vscode.ViewColumn.One, { enableFindWidget: true, enableScripts: true });
     webviewPanel.onDidDispose(() => webviewPanel = undefined);
-    if (extensionPath) webviewPanel.iconPath = vscode.Uri.file(path.join(extensionPath, 'resources/icon.svg'));
+    if (extUri) webviewPanel.iconPath = vscode.Uri.joinPath(extUri, 'resources/icon.svg');
     const { webview } = webviewPanel;
     webview.onDidReceiveMessage(handleMessage);
     let content = await getDebugContent().catch((e: Error) => (vscode.window.showErrorMessage(e.message), null));
     if (!content) {
-      if (!extensionPath) throw new Error('Could not get extensionPath');
+      if (!extUri) throw new Error('Could not get extension URI');
       // If we got here, we're either not in debug mode, or something went wrong (and an error message is shown)
-      content = fs.readFileSync(path.resolve(extensionPath, 'webview/build/index.html')).toString();
-      // Built index.html has e.g. `href="/static/js/stuff.js"`, need to make it use vscode-resource: and point to the built static directory
-      // Scrap that last part, vscode-resource: is deprecated and we need to use Webview.asWebviewUri
-      //content = content.replace(/\/static\//g, vscode.Uri.file(path.join(extensionPath, 'webview/build/static/')).with({ scheme: 'vscode-resource' }).toString());
-      content = content.replace(/\/static\//g, webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, 'webview/build/static/'))).toString());
+      const htmlUri = vscode.Uri.joinPath(extUri, 'webview/build/index.html');
+      const htmlBytes = await vscode.workspace.fs.readFile(htmlUri);
+      content = new TextDecoder().decode(htmlBytes);
+      // Built index.html has e.g. `href="/static/js/stuff.js"`, need to point to the built static directory via asWebviewUri
+      content = content.replace(/\/static\//g, webview.asWebviewUri(vscode.Uri.joinPath(extUri, 'webview/build/static/')).toString());
     }
     // Make sure the CSP meta tag has the right cspSource
     content = content.replace(/\$WEBVIEW_CSPSOURCE/g, webview.cspSource);
@@ -139,16 +145,16 @@ async function handleMessage(message: Message): Promise<any> {
       let title: string | undefined;
       switch (view as View) {
         case 'configeditor':
-          title = 'SSH FS - Edit config';
+          title = 'SSH FS Plus - Edit config';
           break;
         case 'configlocator':
-          title = 'SSH FS - Locate config';
+          title = 'SSH FS Plus - Locate config';
           break;
         case 'newconfig':
-          title = 'SSH FS - New config';
+          title = 'SSH FS Plus - New config';
           break;
       }
-      webviewPanel.title = title || 'SSH FS';
+      webviewPanel.title = title || 'SSH FS Plus';
     }
   }
 }

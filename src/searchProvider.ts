@@ -5,36 +5,53 @@ import { Logging } from './logging';
 import { toPromise } from './utils';
 
 /*
- * FileSearchProvider & TextSearchProvider are proposed APIs in VS Code.
- * They exist at runtime (vscode.workspace.registerFileSearchProvider / registerTextSearchProvider)
- * but are not included in the stable @types/vscode typings.
+ * WorkspaceSymbolProvider runs `grep` on the remote server to find symbol definitions.
+ * This enables fast "Go to Symbol in Workspace" (Ctrl+T) for SSH workspaces.
  *
- * We use `any` casts and runtime detection to register them when available.
- * This enables dramatically faster file/text search for SSH workspaces —
- * instead of VS Code walking the entire directory tree via SFTP (hundreds of round-trips),
- * we run `find` and `grep` directly on the remote server.
- *
- * This is critical for Copilot Agent performance, which relies heavily on
- * grep_search and file_search to understand the codebase.
+ * File search and text search for Copilot agent mode are now handled by
+ * dedicated Language Model Tools (sshfs_find_files, sshfs_search_text)
+ * in chatTools.ts — these use stable APIs and work for all users.
  */
 
 /**
  * Executes a command on the SSH server and returns stdout.
- * Returns null if the command fails or produces no output.
+ * Returns null if the command fails, produces no output, or times out.
  */
-async function execCommand(client: Client, command: string, token?: vscode.CancellationToken): Promise<string | null> {
-    const channel = await toPromise<ClientChannel>(cb => client.exec(command, cb));
+async function execCommand(client: Client, command: string, token?: vscode.CancellationToken, timeoutMs = 15_000): Promise<string | null> {
+    let channel: ClientChannel;
+    try {
+        channel = await toPromise<ClientChannel>(cb => client.exec(command, cb));
+    } catch {
+        return null;
+    }
     return new Promise<string | null>((resolve) => {
         const chunks: string[] = [];
-        const dispose = token?.onCancellationRequested(() => {
+        let resolved = false;
+
+        const finish = (result: string | null) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            cancelDispose?.dispose();
+            resolve(result);
+        };
+
+        const timer = setTimeout(() => {
             channel.close();
-            resolve(null);
+            // Return partial output if available
+            const partial = chunks.join('');
+            finish(partial || null);
+        }, timeoutMs);
+
+        const cancelDispose = token?.onCancellationRequested(() => {
+            channel.close();
+            finish(null);
         });
+
         channel.on('data', (chunk: Buffer) => chunks.push(chunk.toString('utf-8')));
         channel.on('close', () => {
-            dispose?.dispose();
             const output = chunks.join('');
-            resolve(output || null);
+            finish(output || null);
         });
         channel.stderr!.on('data', () => { /* ignore stderr */ });
     });
@@ -48,235 +65,184 @@ function shellEscape(str: string): string {
 }
 
 /**
- * FileSearchProvider — runs `find` on the remote server to search for files by name.
- * This replaces VS Code's default behavior of recursively walking the filesystem via SFTP,
- * making file search (Ctrl+P) and Copilot agent file discovery dramatically faster.
+ * Detects the SymbolKind from a source code line containing a definition keyword.
  */
-export class SSHFileSearchProvider {
-    constructor(private readonly connectionManager: ConnectionManager) { }
+function detectSymbolKind(line: string): vscode.SymbolKind {
+    // CSS selectors
+    if (/^\s*\./.test(line)) return vscode.SymbolKind.Class;       // .class-name
+    if (/^\s*#/.test(line)) return vscode.SymbolKind.Field;        // #id-name
+    if (/^\s*@(media|keyframes|font-face|supports|layer)/.test(line)) return vscode.SymbolKind.Namespace;
+    if (/^\s*@mixin\b/.test(line)) return vscode.SymbolKind.Function;
+    if (/^\s*\$/.test(line)) return vscode.SymbolKind.Variable;    // SCSS $variable
+    if (/^\s*--/.test(line)) return vscode.SymbolKind.Property;    // CSS custom property
+    // Code constructs
+    if (/\b(class|struct|impl)\b/i.test(line)) return vscode.SymbolKind.Class;
+    if (/\b(interface|trait|protocol)\b/i.test(line)) return vscode.SymbolKind.Interface;
+    if (/\b(function|def|func|fn)\b/i.test(line)) return vscode.SymbolKind.Function;
+    if (/\benum\b/i.test(line)) return vscode.SymbolKind.Enum;
+    if (/\b(module|namespace|package)\b/i.test(line)) return vscode.SymbolKind.Module;
+    if (/\b(type|typedef|newtype|typealias)\b/i.test(line)) return vscode.SymbolKind.TypeParameter;
+    if (/\bconst\b/i.test(line)) return vscode.SymbolKind.Constant;
+    if (/\b(let|var)\b/i.test(line)) return vscode.SymbolKind.Variable;
+    return vscode.SymbolKind.Variable;
+}
 
-    async provideFileSearchResults(
-        query: { pattern: string },
-        options: { folder: vscode.Uri; excludes: string[]; maxResults?: number },
+/**
+ * WorkspaceSymbolProvider — runs `grep` on the remote server to find symbol definitions.
+ * This enables fast "Go to Symbol in Workspace" (Ctrl+T) for SSH workspaces,
+ * and provides Copilot with symbol-level understanding of the remote codebase.
+ *
+ * Instead of VS Code parsing every file via SFTP, we run a single `grep -rn` on
+ * the server to find function/class/interface/... definitions matching the query.
+ */
+export class SSHWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
+    constructor(private readonly connectionManager: ConnectionManager) {}
+
+    async provideWorkspaceSymbols(
+        query: string,
         token: vscode.CancellationToken
-    ): Promise<vscode.Uri[]> {
-        const authority = options.folder.authority;
-        const conn = this.connectionManager.getActiveConnection(authority);
+    ): Promise<vscode.SymbolInformation[]> {
+        if (!query || query.length < 2) return [];
+
+        const folders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'ssh') || [];
+        if (folders.length === 0) return [];
+
+        // Run searches in parallel across all SSH folders
+        const promises = folders.map(folder => this.searchFolder(folder, query, token));
+        const allResults = await Promise.all(promises);
+        return allResults.flat();
+    }
+
+    private async searchFolder(
+        folder: vscode.WorkspaceFolder,
+        query: string,
+        token: vscode.CancellationToken
+    ): Promise<vscode.SymbolInformation[]> {
+        if (token.isCancellationRequested) return [];
+
+        const conn = this.connectionManager.getActiveConnection(folder.uri.authority);
         if (!conn) return [];
 
-        const basePath = options.folder.path || '/';
-        const pattern = query.pattern.toLowerCase();
+        const results: vscode.SymbolInformation[] = [];
+        const basePath = folder.uri.path || '/';
 
-        // Default excludes for common large directories
-        const defaultExcludes = ['.git', 'node_modules', '.yarn', '__pycache__', '.cache'];
-        const userExcludes = options.excludes || [];
-        const allExcludes = [...new Set([...defaultExcludes, ...userExcludes.map(e => e.replace(/^\*\*[/\\]/, ''))])];
+        // Escape query for use in grep extended regex
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        const excludeParts = allExcludes.map(e => `-name ${shellEscape(e)} -prune`).join(' -o ');
-        const maxResults = options.maxResults || 5000;
+        // Grep pattern: code definition keyword followed by an identifier containing the query
+        const codeKeywords = 'function|class|interface|type|enum|const|let|var|def|module|namespace|struct|trait|impl';
+        // CSS/SCSS patterns: .class-name, #id-name, @mixin, @keyframes, $variable, --custom-prop
+        // Note: [$] is used instead of \$ for literal dollar sign in ERE
+        const cssPatterns = `[.#][a-zA-Z_-]*${escapedQuery}[a-zA-Z0-9_-]*|@(mixin|keyframes)[[:space:]]+[a-zA-Z_-]*${escapedQuery}|[$][a-zA-Z_-]*${escapedQuery}[a-zA-Z0-9_-]*[[:space:]]*:|--[a-zA-Z_-]*${escapedQuery}[a-zA-Z0-9_-]*[[:space:]]*:`;
+        const pattern = `(${codeKeywords})[[:space:]]+[a-zA-Z0-9_]*${escapedQuery}|${cssPatterns}`;
 
-        // Pattern: *p*a*t*t*e*r*n* for fuzzy matching (each char separated by *)
-        const fuzzyPattern = '*' + pattern.split('').join('*') + '*';
-        const cmd = `find ${shellEscape(basePath)} \\( ${excludeParts} \\) -o -type f -iname ${shellEscape(fuzzyPattern)} -print 2>/dev/null | head -n ${maxResults}`;
+        // Include common source file extensions (code + styles + templates)
+        const sourceIncludes = [
+            // JavaScript / TypeScript
+            '*.ts', '*.tsx', '*.js', '*.jsx', '*.mjs', '*.cjs',
+            // CSS / preprocessors
+            '*.css', '*.scss', '*.sass', '*.less', '*.styl',
+            // PHP / templates
+            '*.php', '*.phtml', '*.twig', '*.blade.php',
+            // HTML / markup
+            '*.html', '*.htm', '*.xml', '*.svg',
+            // Python / Ruby / JVM
+            '*.py', '*.rb', '*.java', '*.kt', '*.scala', '*.go',
+            // Systems / native
+            '*.rs', '*.c', '*.cpp', '*.h', '*.hpp', '*.cc', '*.cs',
+            // Others
+            '*.swift', '*.dart', '*.lua', '*.vue', '*.svelte', '*.astro',
+        ].map(p => `--include=${shellEscape(p)}`).join(' ');
 
-        Logging.debug`FileSearch: ${cmd}`;
-        const output = await execCommand(conn.client, cmd, token);
+        const excludeDirs = [
+            'node_modules', '.git', '.yarn', '__pycache__', '.cache',
+            'dist', 'build', '.next', 'target', '.venv', 'vendor',
+        ].map(d => `--exclude-dir=${shellEscape(d)}`).join(' ');
+
+        const cmd = `grep -rn -iE ${shellEscape(pattern)} ${sourceIncludes} ${excludeDirs} ${shellEscape(basePath)} 2>/dev/null | head -n 300`;
+
+        Logging.debug`WorkspaceSymbol: ${cmd}`;
+        const output = await execCommand(conn.client, cmd, token, 10_000);
         if (!output || token.isCancellationRequested) return [];
 
-        const results: vscode.Uri[] = [];
+        const lineRegex = /^(.+?):(\d+):(.*)$/;
+        const codeNameRegex = /\b(?:export\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(?:function\*?|class|interface|type|enum|const|let|var|def|module|namespace|struct|trait|impl)\s+(\w+)/i;
+        // CSS: .class-name anywhere on line (not just start), #id-name, @mixin, @keyframes, $var, --prop
+        const cssClassRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s*[{,:]|\s*$)/;
+        const cssIdRegex = /#([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s*[{,:]|\s*$)/;
+        const cssMixinRegex = /@(mixin|keyframes)\s+([a-zA-Z_][a-zA-Z0-9_-]*)/;
+        const scssVarRegex = /\$([a-zA-Z_][a-zA-Z0-9_-]*)\s*:/;
+        const cssCustomPropRegex = /(--[a-zA-Z_][a-zA-Z0-9_-]*)\s*:/;
+
         for (const line of output.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            results.push(options.folder.with({ path: trimmed }));
+            const match = lineRegex.exec(line.trim());
+            if (!match) continue;
+
+            const [, filePath, lineNumStr, content] = match;
+            const lineNum = parseInt(lineNumStr, 10) - 1;
+
+            let symbolName: string | undefined;
+            let kind: vscode.SymbolKind;
+
+            // Try CSS patterns first (for .css/.scss/.less files or inline styles)
+            const cssClass = cssClassRegex.exec(content);
+            const cssId = cssIdRegex.exec(content);
+            const cssMixin = cssMixinRegex.exec(content);
+            const scssVar = scssVarRegex.exec(content);
+            const cssProp = cssCustomPropRegex.exec(content);
+
+            if (cssClass) {
+                symbolName = '.' + cssClass[1];
+                kind = vscode.SymbolKind.Class;
+            } else if (cssId) {
+                symbolName = '#' + cssId[1];
+                kind = vscode.SymbolKind.Field;
+            } else if (cssMixin) {
+                symbolName = cssMixin[2];
+                kind = cssMixin[1] === 'keyframes' ? vscode.SymbolKind.Namespace : vscode.SymbolKind.Function;
+            } else if (scssVar) {
+                symbolName = '$' + scssVar[1];
+                kind = vscode.SymbolKind.Variable;
+            } else if (cssProp) {
+                symbolName = cssProp[1];
+                kind = vscode.SymbolKind.Property;
+            } else {
+                // Code pattern (JS/TS/PHP/Python/etc.)
+                const symbolMatch = codeNameRegex.exec(content);
+                if (!symbolMatch) continue;
+                symbolName = symbolMatch[1];
+                kind = detectSymbolKind(content);
+            }
+
+            results.push(new vscode.SymbolInformation(
+                symbolName,
+                kind,
+                folder.name,
+                new vscode.Location(
+                    folder.uri.with({ path: filePath }),
+                    new vscode.Position(lineNum, 0)
+                )
+            ));
         }
 
-        Logging.debug`FileSearch: found ${results.length} results for "${query.pattern}"`;
         return results;
     }
 }
 
-/** Query shape for TextSearchProvider (mirrors proposed vscode.TextSearchQuery) */
-interface TextQuery {
-    pattern: string;
-    isCaseSensitive?: boolean;
-    isWordMatch?: boolean;
-    isRegExp?: boolean;
-}
-
 /**
- * TextSearchProvider — runs `grep` on the remote server to search for text in files.
- * This replaces VS Code's default behavior of downloading and scanning every file via SFTP,
- * making text search (Ctrl+Shift+F) and Copilot agent grep operations dramatically faster.
- */
-export class SSHTextSearchProvider {
-    constructor(private readonly connectionManager: ConnectionManager) { }
-
-    async provideTextSearchResults(
-        query: TextQuery,
-        options: { folder: vscode.Uri; includes: string[]; excludes: string[]; maxResults?: number },
-        progress: vscode.Progress<any>,
-        token: vscode.CancellationToken
-    ): Promise<{ limitHit: boolean }> {
-        const authority = options.folder.authority;
-        const conn = this.connectionManager.getActiveConnection(authority);
-        if (!conn) return { limitHit: false };
-
-        const basePath = options.folder.path || '/';
-        const maxResults = options.maxResults || 2000;
-
-        // Build grep command
-        const grepFlags: string[] = ['-r', '-n', '--color=never'];
-
-        if (!query.isCaseSensitive) grepFlags.push('-i');
-        if (query.isWordMatch) grepFlags.push('-w');
-        if (query.isRegExp) {
-            grepFlags.push('-E');
-        } else {
-            grepFlags.push('-F');
-        }
-
-        // Include patterns
-        if (options.includes && options.includes.length > 0) {
-            for (const inc of options.includes) {
-                const includePattern = inc.replace(/^\*\*[/\\]/, '');
-                grepFlags.push(`--include=${shellEscape(includePattern)}`);
-            }
-        }
-
-        // Exclude patterns
-        const defaultExcludes = ['.git', 'node_modules', '.yarn', '__pycache__', '.cache'];
-        const userExcludes = options.excludes || [];
-        const allExcludes = [...new Set([...defaultExcludes, ...userExcludes.map(e => e.replace(/^\*\*[/\\]/, ''))])];
-        for (const exc of allExcludes) {
-            if (exc.includes('.')) {
-                grepFlags.push(`--exclude=${shellEscape(exc)}`);
-            } else {
-                grepFlags.push(`--exclude-dir=${shellEscape(exc)}`);
-            }
-        }
-
-        grepFlags.push('--binary-files=without-match');
-
-        const cmd = `grep ${grepFlags.join(' ')} -- ${shellEscape(query.pattern)} ${shellEscape(basePath)} 2>/dev/null | head -n ${maxResults}`;
-
-        Logging.debug`TextSearch: ${cmd}`;
-        const output = await execCommand(conn.client, cmd, token);
-
-        if (!output || token.isCancellationRequested) {
-            return { limitHit: false };
-        }
-
-        const lines = output.split('\n');
-        let resultCount = 0;
-
-        // Parse grep output: filepath:linenum:content
-        const grepLineRegex = /^(.+?):(\d+):(.*)$/;
-        for (const line of lines) {
-            if (token.isCancellationRequested) break;
-
-            const match = grepLineRegex.exec(line);
-            if (!match) continue;
-
-            const [, filePath, lineNumStr, lineText] = match;
-            const lineNum = parseInt(lineNumStr, 10) - 1; // VS Code uses 0-based lines
-
-            // Find match positions in line text
-            const matchRanges = findMatchRanges(lineText, query);
-            if (matchRanges.length === 0) continue;
-
-            for (const r of matchRanges) {
-                progress.report({
-                    uri: options.folder.with({ path: filePath }),
-                    ranges: [new vscode.Range(lineNum, r.start, lineNum, r.end)],
-                    preview: {
-                        text: lineText,
-                        matches: [new vscode.Range(0, r.start, 0, r.end)],
-                    },
-                });
-                resultCount++;
-            }
-
-            if (resultCount >= maxResults) {
-                return { limitHit: true };
-            }
-        }
-
-        Logging.debug`TextSearch: ${resultCount} matches for "${query.pattern}"`;
-        return { limitHit: lines.length >= maxResults };
-    }
-}
-
-/**
- * Find all match ranges (as {start, end} character offsets) in a line of text.
- */
-function findMatchRanges(lineText: string, query: TextQuery): { start: number; end: number }[] {
-    const ranges: { start: number; end: number }[] = [];
-    try {
-        let pattern: string;
-        let flags = 'g';
-        if (!query.isCaseSensitive) flags += 'i';
-
-        if (query.isRegExp) {
-            pattern = query.pattern;
-        } else {
-            pattern = query.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        }
-
-        if (query.isWordMatch) {
-            pattern = `\\b${pattern}\\b`;
-        }
-
-        const regex = new RegExp(pattern, flags);
-        let m: RegExpExecArray | null;
-        while ((m = regex.exec(lineText)) !== null) {
-            ranges.push({ start: m.index, end: m.index + m[0].length });
-            if (m[0].length === 0) break; // prevent infinite loop on zero-width matches
-        }
-    } catch {
-        // If regex fails, try simple string indexOf
-        const searchStr = query.isCaseSensitive ? query.pattern : query.pattern.toLowerCase();
-        const searchIn = query.isCaseSensitive ? lineText : lineText.toLowerCase();
-        let idx = 0;
-        while ((idx = searchIn.indexOf(searchStr, idx)) !== -1) {
-            ranges.push({ start: idx, end: idx + searchStr.length });
-            idx += searchStr.length || 1;
-        }
-    }
-    return ranges;
-}
-
-/**
- * Registers FileSearchProvider and TextSearchProvider for the 'ssh' scheme.
- * These are proposed VS Code APIs — available at runtime but not in @types/vscode.
- * If the APIs are unavailable, registration is silently skipped.
+ * Registers WorkspaceSymbolProvider for the 'ssh' scheme.
+ * File search and text search are provided via Language Model Tools
+ * (sshfs_find_files, sshfs_search_text) in chatTools.ts.
  */
 export function registerSearchProviders(
     connectionManager: ConnectionManager,
     subscribe: (...disposables: vscode.Disposable[]) => void
 ): void {
-    const ws = vscode.workspace as any;
-
-    if (typeof ws.registerFileSearchProvider === 'function') {
-        try {
-            const provider = new SSHFileSearchProvider(connectionManager);
-            subscribe(ws.registerFileSearchProvider('ssh', provider));
-            Logging.info`Registered FileSearchProvider for ssh:// — remote file search via 'find'`;
-        } catch (e) {
-            Logging.warning`Failed to register FileSearchProvider: ${e}`;
-        }
-    } else {
-        Logging.debug`FileSearchProvider API not available (proposed API)`;
-    }
-
-    if (typeof ws.registerTextSearchProvider === 'function') {
-        try {
-            const provider = new SSHTextSearchProvider(connectionManager);
-            subscribe(ws.registerTextSearchProvider('ssh', provider));
-            Logging.info`Registered TextSearchProvider for ssh:// — remote text search via 'grep'`;
-        } catch (e) {
-            Logging.warning`Failed to register TextSearchProvider: ${e}`;
-        }
-    } else {
-        Logging.debug`TextSearchProvider API not available (proposed API)`;
+    try {
+        const symbolProvider = new SSHWorkspaceSymbolProvider(connectionManager);
+        subscribe(vscode.languages.registerWorkspaceSymbolProvider(symbolProvider));
+        Logging.info`Registered WorkspaceSymbolProvider — remote symbol search via 'grep'`;
+    } catch (e) {
+        Logging.warning`Failed to register WorkspaceSymbolProvider: ${e}`;
     }
 }

@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 // the webview (Settings UI) from trying a local dev server first instead of the pre-built version.
 export let DEBUG: boolean = false;
 export function setDebug(debug: boolean) {
-  console.warn(`[vscode-sshfs] Debug mode set to ${debug}`);
+  console.warn(`[SSH FS Plus] Debug mode set to ${debug}`);
   DEBUG = debug;
   if (!debug) return;
   try { require('.pnp.cjs').setup(); } catch (e) {
@@ -17,7 +17,7 @@ export function setDebug(debug: boolean) {
   }
 }
 
-export const OUTPUT_CHANNEL = vscode.window.createOutputChannel('SSH FS');
+export const OUTPUT_CHANNEL = vscode.window.createOutputChannel('SSH FS Plus');
 
 export interface LoggingOptions {
   /**
@@ -223,7 +223,7 @@ function censorConfig(config: FileSystemConfig): CensoredFileSystemConfig {
 export const Logging = new (Logger as any) as Logger;
 
 Logging.info`
-Created output channel for vscode-sshfs
+Created output channel for SSH FS Plus
 When posting your logs somewhere, keep the following in mind:
   - While the logging tries to censor your passwords/passphrases/..., double check!
     Maybe you also want to censor out e.g. the hostname/IP you're connecting to.

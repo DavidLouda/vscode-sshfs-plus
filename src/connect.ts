@@ -1,5 +1,4 @@
 import type { FileSystemConfig } from 'common/fileSystemConfig';
-import { readFile } from 'fs';
 import { Socket } from 'net';
 import { userInfo } from 'os';
 import { AuthHandlerFunction, AuthHandlerObject, Client, ClientChannel, ConnectConfig } from 'ssh2';
@@ -137,8 +136,8 @@ export async function calculateActualConfig(config: FileSystemConfig): Promise<F
   if (config.username === '$USER') config.username = userInfo().username;
   if (config.privateKeyPath) {
     try {
-      const key = await toPromise<Buffer>(cb => readFile(config.privateKeyPath!, cb));
-      config.privateKey = key;
+      const key = await vscode.workspace.fs.readFile(vscode.Uri.file(config.privateKeyPath!));
+      config.privateKey = Buffer.from(key);
       logging.debug`\tRead private key from ${config.privateKeyPath}`;
     } catch (e) {
       throw new Error(`Error while reading the keyfile at:\n${config.privateKeyPath}`);
@@ -183,7 +182,7 @@ export async function createSocket(config: FileSystemConfig): Promise<NodeJS.Rea
   if (config.hop) {
     logging.debug`\tHopping through ${config.hop}`;
     const hop = getConfig(config.hop);
-    if (!hop) throw new Error(`A SSH FS configuration with the name '${config.hop}' doesn't exist`);
+    if (!hop) throw new Error(`A SSH FS Plus configuration with the name '${config.hop}' doesn't exist`);
     const ssh = await createSSH(hop);
     if (!ssh) {
       logging.debug`\tFailed in connecting to hop ${config.hop}`;
@@ -244,7 +243,7 @@ export async function createSSH(config: FileSystemConfig, sock?: NodeJS.Readable
   return new Promise<Client>((resolve, reject) => {
     const client = new Client();
     client.once('ready', () => resolve(client));
-    client.once('timeout', () => reject(new Error(`Socket timed out while connecting SSH FS '${config.name}'`)));
+    client.once('timeout', () => reject(new Error(`Socket timed out while connecting SSH FS Plus '${config.name}'`)));
     client.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
       logging.debug`Received keyboard-interactive request with prompts ${prompts}`;
       Promise.all<string | undefined>(prompts.map(prompt =>

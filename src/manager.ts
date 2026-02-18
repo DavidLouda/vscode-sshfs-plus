@@ -82,9 +82,9 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
           throw vscode.FileSystemError.FileNotADirectory(homeUri);
         }
       } catch (e) {
-        let message = `Couldn't read the home directory '${con.home}' on the server for SSH FS '${name}', this might be a sign of bad permissions`;
+        let message = `Couldn't read the home directory '${con.home}' on the server for SSH FS Plus '${name}', this might be a sign of bad permissions`;
         if (e instanceof vscode.FileSystemError) {
-          message = `The home directory '${con.home}' in SSH FS '${name}' is not a directory, this might be a sign of bad permissions`;
+          message = `The home directory '${con.home}' in SSH FS Plus '${name}' is not a directory, this might be a sign of bad permissions`;
         }
         Logging.error(e);
         const answer = await vscode.window.showWarningMessage(message, 'Stop', 'Ignore');
@@ -98,8 +98,8 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
         this.commandDisconnect(name);
         throw e;
       }
-      Logging.error`Error while connecting to SSH FS ${name}:\n${e}`;
-      vscode.window.showErrorMessage(`Error while connecting to SSH FS ${name}:\n${e.message}`, 'Retry', 'Configure', 'Ignore').then((chosen) => {
+      Logging.error`Error while connecting to SSH FS Plus ${name}:\n${e}`;
+      vscode.window.showErrorMessage(`Error while connecting to SSH FS Plus ${name}:\n${e.message}`, 'Retry', 'Configure', 'Ignore').then((chosen) => {
         delete this.creatingFileSystems[name];
         if (chosen === 'Retry') {
           this.createFileSystem(name).catch(() => { });
@@ -137,7 +137,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
   public async promptReconnect(name: string) {
     const config = getConfig(name);
     if (!config) return;
-    const choice = await vscode.window.showWarningMessage(`SSH FS ${config.label || config.name} disconnected`, 'Ignore', 'Disconnect');
+    const choice = await vscode.window.showWarningMessage(`SSH FS Plus ${config.label || config.name} disconnected`, 'Ignore', 'Disconnect');
     if (choice === 'Disconnect') this.commandDisconnect(name);
   }
   /* TaskProvider */
@@ -203,7 +203,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
         uri,
         startIndex: match.index,
         length: filepath.length,
-        tooltip: '[SSH FS] Open file',
+        tooltip: '[SSH FS Plus] Open file',
       });
     }
     return links;
@@ -226,7 +226,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
     if (root.startsWith('/')) root = root.substring(1);
     vscode.workspace.updateWorkspaceFolders(folders ? folders.length : 0, 0, {
       uri: vscode.Uri.parse(`ssh://${config.name}/${root}`),
-      name: `SSH FS - ${config.label || config.name}`,
+      name: `SSH FS Plus - ${config.label || config.name}`,
     });
   }
   public commandDisconnect(target: string | Connection) {

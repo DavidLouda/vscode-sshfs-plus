@@ -3,7 +3,7 @@
     "displayName": "SSH FS Plus",
     "description": "Enhanced SSH file system, terminal and task provider — a maintained fork of SSH FS by Kelvin Schoofs",
     "publisher": "DavidLouda",
-    "version": "2.2.0",
+    "version": "2.4.0",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -13,10 +13,6 @@
     "extensionKind": [
         "ui",
         "workspace"
-    ],
-    "enabledApiProposals": [
-        "fileSearchProvider",
-        "textSearchProvider"
     ],
     "activationEvents": [
         "onFileSystem:ssh",
@@ -378,6 +374,100 @@
             {
                 "view": "sshfs-connections",
                 "contents": "Not connected to anything"
+            }
+        ],
+        "languageModelTools": [
+            {
+                "name": "sshfs_run_command",
+                "displayName": "SSH Run Command",
+                "modelDescription": "Executes a shell command on a remote SSH server and returns stdout+stderr. The workspace is mounted over SSH via SSH FS Plus. Use this to: read files (cat, head, tail), list directories (ls, find, tree), check file metadata (stat, wc), read logs, run build/test commands, git operations, and any other shell tasks. For finding files by name, prefer sshfs_find_files. For searching text in files, prefer sshfs_search_text. The command runs in the default login shell of the SSH user.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshCommand",
+                "icon": "$(terminal)",
+                "userDescription": "Run a command on the remote SSH server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute on the remote SSH server"
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_find_files",
+                "displayName": "SSH Find Files",
+                "modelDescription": "Searches for files by name on a remote SSH server. The workspace is mounted over SSH and the standard file_search tool is extremely slow or times out because it walks directories via SFTP over the network. This tool runs the `find` command directly on the remote server and returns results instantly. YOU MUST USE THIS TOOL instead of file_search whenever the workspace scheme is 'ssh://' or the workspace is provided by SSH FS Plus. Accepts file names (e.g. 'mobile-optimized.css'), glob patterns ('*.php', 'config*'), and partial names. Returns file paths relative to the workspace root.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshFindFiles",
+                "icon": "$(search)",
+                "userDescription": "Find files on the remote SSH server by name or pattern",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "The file name or glob pattern to search for (e.g. 'mobile-optimized.css', '*.php', 'config*')"
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional subdirectory to search within (relative to workspace root). If omitted, searches the entire workspace."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": ["pattern"]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_search_text",
+                "displayName": "SSH Search Text",
+                "modelDescription": "Searches for text content inside files on a remote SSH server. The workspace is mounted over SSH and the standard grep_search tool is extremely slow or times out because it downloads and scans every file via SFTP over the network. This tool runs `grep` directly on the remote server and returns results instantly. YOU MUST USE THIS TOOL instead of grep_search whenever the workspace scheme is 'ssh://' or the workspace is provided by SSH FS Plus. Returns matching lines with file paths and line numbers. Supports fixed strings and regex patterns, case-sensitive/insensitive search, and file type filtering (e.g. '*.php,*.css').",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshSearchText",
+                "icon": "$(search)",
+                "userDescription": "Search for text in files on the remote SSH server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The text or regex pattern to search for inside files"
+                        },
+                        "includePattern": {
+                            "type": "string",
+                            "description": "Comma-separated file glob patterns to include (e.g. '*.php,*.html'). If omitted, searches all files."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional subdirectory to search within (relative to workspace root). If omitted, searches the entire workspace."
+                        },
+                        "isRegex": {
+                            "type": "boolean",
+                            "description": "Whether the query is a regex pattern (default: false, uses literal string matching)"
+                        },
+                        "caseSensitive": {
+                            "type": "boolean",
+                            "description": "Whether the search should be case-sensitive (default: false)"
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": ["query"]
+                },
+                "when": "sshfs.openConnections > 0"
             }
         ]
     },

@@ -10,13 +10,13 @@ if [ "$#" -ne 1 ] || [ $1 = "help" ] || [ $1 = "--help" ] || [ $1 = "-h" ] || [ 
     echo "  code <path_to_existing_file>    Will make VS Code open the file";
     echo "  code <path_to_existing_folder>  Will make VS Code add the folder as an additional workspace folder";
     echo "  code <path_to_nonexisting_file> Will prompt VS Code to create an empty file, then open it afterwards";
-elif [ ! -n "$KELVIN_SSHFS_CMD_PATH" ]; then
-    echo "Not running in a terminal spawned by SSH FS? Failed to sent!"
-elif [ -c "$KELVIN_SSHFS_CMD_PATH" ]; then
-    echo "::sshfs:code:$(pwd):::$1" >> $KELVIN_SSHFS_CMD_PATH;
-    echo "Command sent to SSH FS extension";
+elif [ ! -n "$SSHFS_PLUS_CMD_PATH" ]; then
+    echo "Not running in a terminal spawned by SSH FS Plus? Failed to sent!"
+elif [ -c "$SSHFS_PLUS_CMD_PATH" ]; then
+    echo "::sshfs:code:$(pwd):::$1" >> $SSHFS_PLUS_CMD_PATH;
+    echo "Command sent to SSH FS Plus extension";
 else
-    echo "Missing command shell pty of SSH FS extension? Failed to sent!"
+    echo "Missing command shell pty of SSH FS Plus extension? Failed to sent!"
 fi
 `;
 
@@ -39,7 +39,7 @@ async function ensureCachedFile(connection: Connection, key: string, path: strin
 }
 
 async function rcInitializePATH(connection: Connection): Promise<string[] | string> {
-    const dir = `/tmp/.Kelvin_sshfs.RcBin.${connection.actualConfig.username || Date.now()}`;
+    const dir = `/tmp/.sshfs_plus.RcBin.${connection.actualConfig.username || Date.now()}`;
     const sftp = await toPromise<SFTP>(cb => connection.client.sftp(cb));
     await toPromise(cb => sftp!.mkdir(dir, { mode: 0o755 }, cb)).catch(() => { });
     const [, path] = await ensureCachedFile(connection, 'CmdCode', `${dir}/code`, SCRIPT_COMMAND_CODE, sftp);

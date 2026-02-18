@@ -176,7 +176,7 @@ export class ConnectionManager {
                 logging.error(`Windows detected, command terminal is not yet supported`, LOGGING_NO_STACKTRACE);
             } else {
                 const cmdPath = await this._createCommandTerminal(client, shellConfig, name, flagRCDV);
-                environment.push({ key: 'KELVIN_SSHFS_CMD_PATH', value: cmdPath });
+                environment.push({ key: 'SSHFS_PLUS_CMD_PATH', value: cmdPath });
             }
         }
         logging.debug`Environment: ${environment}`;

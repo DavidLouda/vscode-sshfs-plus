@@ -1,6 +1,37 @@
 
 # Changelog
 
+## v2.4.0 — SSH FS Plus (2026-02-18)
+
+### New — Copilot Language Model Tools
+
+File search and text search are now provided as **dedicated Copilot tools** using the stable Language Model Tools API (`vscode.lm.registerTool`). This works for all users without any workarounds.
+
+- **`sshfs_find_files`** — fast file search via `find` on the remote server. Copilot agent uses this instead of the slow SFTP-based `file_search` which walks every directory over the network.
+- **`sshfs_search_text`** — fast text/grep search via `grep` on the remote server. Copilot agent uses this instead of downloading and scanning every file via SFTP.
+- Both tools support: glob patterns, subdirectory filtering, regex, case sensitivity, file type filtering, and automatic exclusion of common directories (`.git`, `node_modules`, `vendor`, etc.)
+
+### Removed
+
+- **Removed proposed API dependency** — `FileSearchProvider` and `TextSearchProvider` (proposed VS Code APIs) have been removed. These required `enabledApiProposals` which only works in extension development mode or with manual `argv.json` configuration — meaning they never worked for normal users.
+- Removed `enabledApiProposals` from `package.json`
+
+### Kept
+
+- **`WorkspaceSymbolProvider`** (stable API) — Ctrl+T symbol search still runs `grep` on the remote server
+- **`sshfs_run_command`** — general-purpose SSH command tool for Copilot
+
+## v2.3.3 — SSH FS Plus (2026-02-18)
+
+### Fixed
+
+- **FileSearchProvider — glob prefix stripping** — patterns like `**/mobile-optimized.css` sent by Copilot/VS Code now correctly have `**/` and `*/` prefixes removed before being passed to `find -iname`, which does not understand recursive globs
+- **FileSearchProvider — path-containing patterns** — patterns like `css/mobile-optimized.css` are now split into a subdirectory prefix and filename; if the subdirectory search yields no results, the full base path is retried
+- **Exclude patterns** — `vendor/bundle` replaced with `vendor` in both FileSearchProvider and TextSearchProvider default excludes, since `find -name` and `grep --exclude-dir` only match directory basenames, not paths with slashes
+- **Wildcard normalization** — remaining `**` in patterns after prefix stripping is converted to `*` for `find` compatibility
+- Increased FileSearch timeout from 10 s to 15 s
+- Added `Logging.info` diagnostic messages showing raw query, normalized pattern, and executed `find` command for easier troubleshooting via the SSH FS Plus output channel
+
 ## v2.2.0 — SSH FS Plus (2026-02-17)
 
 ### Remote Search Providers (Copilot / AI Agent Performance)

@@ -1,9 +1,9 @@
 {
     "name": "vscode-sshfs-plus",
     "displayName": "SSH FS Plus",
-    "description": "Enhanced SSH file system, terminal and task provider — a maintained fork of SSH FS by Kelvin Schoofs",
+    "description": "SSH workspace with full GitHub Copilot & AI support — file system, terminals, tasks, and 7 language model tools for remote development over SSH",
     "publisher": "DavidLouda",
-    "version": "2.6.2",
+    "version": "2.6.3",
     "engines": {
         "vscode": "^1.100.0"
     },

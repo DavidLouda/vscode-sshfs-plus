@@ -21,7 +21,7 @@ This is primarily a personal project. I use it daily, I fix what annoys me, and 
 
 ### 🤖 Copilot Integration *(v2.4+)*
 
-The biggest addition. Seven custom [Language Model Tools](https://code.visualstudio.com/api/extension-guides/language-model-tool) that make GitHub Copilot actually useful on remote SSH workspaces:
+The biggest addition. Seven custom [Language Model Tools](https://code.visualstudio.com/api/extension-guides/ai/tools) that make GitHub Copilot actually useful on remote SSH workspaces:
 
 | Tool | What it does |
 |---|---|
@@ -36,6 +36,21 @@ The biggest addition. Seven custom [Language Model Tools](https://code.visualstu
 VS Code's built-in Copilot tools are designed for local/Remote SSH workspaces and don't support custom `ssh://` filesystem URIs. These tools bridge that gap — they execute directly on the remote server via SSH, so Copilot works just as well on SSH FS mounts as it does locally.
 
 There's also an **`@sshfs` Chat Participant** *(v2.6+)* — type `@sshfs` in Copilot Chat and it automatically routes all operations through the SSH-specific tools.
+
+### 🎭 MCP Playwright — works out of the box
+
+[Playwright](https://playwright.dev/) is a browser automation framework by Microsoft — it can programmatically open web pages, click buttons, fill forms, take screenshots and run end-to-end tests across Chromium, Firefox and WebKit.
+
+VS Code supports Playwright as an [MCP (Model Context Protocol)](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) server, which means GitHub Copilot in agent mode can control a real browser directly from chat — navigate to URLs, interact with page elements, capture screenshots, and more.
+
+Because SSH FS Plus runs in the **local VS Code UI host** (`extensionKind: ["ui", "workspace"]`), all MCP traffic stays on your local machine. Playwright launches a local browser, Copilot talks to it via MCP, and your SSH remote workspace works alongside it without any conflicts. No special configuration needed — just open the Extensions view, search `@mcp playwright`, and install an MCP Playwright server directly from the [built-in MCP gallery](https://code.visualstudio.com/docs/copilot/customization/mcp-servers#_add-an-mcp-server-from-the-mcp-server-gallery).
+
+**My typical workflow:** I edit websites on remote servers over SSH, and when I need visual tweaks, I just tell Copilot to open the site's URL in Playwright. It navigates to the page, takes a screenshot, spots visual issues, edits the code on the remote server, and reloads — all in one conversation. Code editing and visual debugging in a single loop, no context switching.
+
+This makes SSH FS Plus a great setup for workflows like:
+- Editing code on a remote server while Copilot visually debugs the result in a local browser
+- Asking Copilot to verify API responses by navigating to endpoints
+- Automated UI testing driven by natural language in Copilot Chat
 
 ### 🔧 Modernization & Fixes
 

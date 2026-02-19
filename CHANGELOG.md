@@ -1,6 +1,12 @@
 
 # Changelog
 
+## v2.6.1 — SSH FS Plus (2026-02-19)
+
+### Changed
+
+- **New project logo** — updated extension icon in `resources/Logo.png`
+
 ## v2.6.0 — SSH FS Plus (2026-02-19)
 
 ### New

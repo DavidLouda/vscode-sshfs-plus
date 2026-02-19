@@ -4,6 +4,7 @@
 ![Logo](./resources/Logo.png)
 
 [![GitHub release](https://img.shields.io/github/v/release/DavidLouda/vscode-sshfs-plus?include_prereleases&label=GitHub%20version)](https://github.com/DavidLouda/vscode-sshfs-plus/releases)
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/DavidLouda.vscode-sshfs-plus?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=DavidLouda.vscode-sshfs-plus)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE.txt)
 
 > **Enhanced & maintained fork of [SSH FS](https://github.com/SchoofsKelvin/vscode-sshfs) by [Kelvin Schoofs](https://github.com/SchoofsKelvin)**
@@ -61,11 +62,11 @@ There's also an **`@sshfs` Chat Participant** *(v2.6+)* — type `@sshfs` in Cop
 
 ## Installation
 
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=DavidLouda.vscode-sshfs-plus), or:
+
 1. Download the latest `.vsix` from [Releases](https://github.com/DavidLouda/vscode-sshfs-plus/releases)
 2. In VS Code: **Extensions** → **⋯** → **Install from VSIX…**
 3. Reload VS Code
-
-> **Note:** This extension is not published on the VS Code Marketplace. It's a personal fork — see [Why does this exist?](#why-does-this-exist) above.
 
 ## Features
 
@@ -110,6 +111,7 @@ Custom `sftp` subsystem commands and sudo support for operating on remote files 
 
 ## Links
 
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=DavidLouda.vscode-sshfs-plus)
 - [GitHub (this fork)](https://github.com/DavidLouda/vscode-sshfs-plus) ([Issues](https://github.com/DavidLouda/vscode-sshfs-plus/issues) | [Releases](https://github.com/DavidLouda/vscode-sshfs-plus/releases))
 - [Original SSH FS by Kelvin Schoofs](https://github.com/SchoofsKelvin/vscode-sshfs) ([VS Marketplace](https://marketplace.visualstudio.com/items?itemName=Kelvin.vscode-sshfs) | [Open VSX](https://open-vsx.org/extension/Kelvin/vscode-sshfs))
 

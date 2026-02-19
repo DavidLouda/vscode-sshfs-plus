@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { connect as realConnect } from 'react-redux';
-import { combineReducers, createStore, Dispatch } from 'redux';
+import { combineReducers, legacy_createStore as createStore, Dispatch, Reducer } from 'redux';
 import * as data from './data';
 import * as view from './view';
 import { API } from './vscode';
 
 const reducers = combineReducers({
-  data: data.reducer,
-  view: view.reducer,
+  data: data.reducer as Reducer<data.IState>,
+  view: view.reducer as Reducer<view.IState>,
 });
 
 export interface State {

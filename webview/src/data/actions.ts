@@ -6,6 +6,7 @@ export enum ActionType {
 
 interface IAction {
   type: ActionType;
+  [key: string]: unknown;
 }
 
 export type Action = IActionReceivedConfigs;

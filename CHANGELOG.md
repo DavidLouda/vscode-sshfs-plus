@@ -1,6 +1,58 @@
 
 # Changelog
 
+## v2.6.0 — SSH FS Plus (2026-02-19)
+
+### New
+
+- **`@sshfs` Chat Participant** — new Copilot Chat participant for interactive SSH file editing. Type `@sshfs` in the chat to start a conversation that automatically uses SSH tools (`sshfs_read_file`, `sshfs_edit_file`, `sshfs_search_text`, etc.) to work with files on remote servers. Key features:
+  - Tool-calling loop with up to 15 rounds for complex multi-step tasks
+  - Automatically filters to SSH-specific tools only
+  - Runtime detection of proposed `stream.textEdit()` API for inline diff preview (falls back to `workspace.applyEdit()` on stable VS Code)
+
+- **`sshfs_read_file` Copilot tool** — new Language Model Tool for reading file contents directly on the remote server. Replaces slow SFTP-based `read_file` that downloads entire files over the network. Key features:
+  - Reads specific line ranges (`startLine`/`endLine`) or entire files
+  - Automatically adds line numbers for easy reference
+  - Returns up to 500 lines per call with smart truncation
+  - Uses `sed`/`head` + `awk` for instant server-side execution
+  - No confirmation dialog needed (read-only operation)
+  - Shows total line count in header for context
+  - Copilot uses this instead of `read_file` for all file reading on SSH workspaces
+
+- **`sshfs_edit_file` Copilot tool** — new Language Model Tool for editing files on remote SSH servers via SFTP. Replaces the built-in `replace_string_in_file` which cannot edit `ssh://` URIs (VS Code blocks them as "outside workspace"). Key features:
+  - Exact string find-and-replace (same semantics as `replace_string_in_file`)
+  - Reads and writes files via SFTP (binary-safe, preserves encoding)
+  - Validates uniqueness — refuses to edit if oldString matches 0 or 2+ locations
+  - Shows confirmation dialog with preview of changes before applying
+  - 2 MB file size limit to prevent memory issues
+  - Reports line number and line count of the edit in the result
+  - Copilot uses this instead of `replace_string_in_file` or `sed` commands for all file edits
+
+### Changed
+
+- **`sshfs_search_text` now supports single-file search** — when `path` points to a file (has extension), uses non-recursive grep without `--exclude-dir` flags. No need to use `sshfs_run_command` with manual grep for single-file searches.
+- **Updated tool descriptions** — all tools now cross-reference `sshfs_read_file` and `sshfs_edit_file` to prevent Copilot from falling back to slow/broken built-in alternatives
+
+### Fixed
+
+- **`sshfs_read_file` awk escape sequences** — `\t` and `\n` in template literals were interpreted by JavaScript as literal tab/newline characters, breaking the awk command. Fixed to `\\t`/`\\n`.
+
+### Dependencies
+
+- **React** 18 → 19
+- **Redux** 4 → 5 (`legacy_createStore`, `UnknownAction`-compatible action types)
+- **react-redux** 7 → 9 (removed `@types/react-redux` — types now built-in)
+- **react-refresh** 0.10 → 0.16
+- **@pmmmwh/react-refresh-webpack-plugin** 0.5.0-rc.3 → 0.6
+- **ESLint** 8 → 9 with flat config (`eslint.config.mjs` replacing `.eslintrc.json`)
+- **typescript-eslint** — unified package `^8.0.0` replacing separate `@typescript-eslint/parser` + `@typescript-eslint/eslint-plugin`
+- **Prettier** 2 → 3
+- **@vscode/vsce** 2 → 3
+- **css-loader** 4 → 7, **style-loader** 1 → 4, **mini-css-extract-plugin** 0.11 → 2, **css-minimizer-webpack-plugin** 3 → 7
+- **dotenv** 8 → 16
+- **@types/webpack** 4 → 5, **@types/semver** 7.3 → 7.7, **@types/react** 18 → 19, **@types/react-dom** 18 → 19
+- Removed `pnp-webpack-plugin` (unused with webpack 5) and `url-loader` (replaced by webpack 5 native `type: 'asset'`)
+
 ## v2.5.0 — SSH FS Plus (2026-02-19)
 
 ### New

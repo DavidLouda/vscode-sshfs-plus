@@ -3,7 +3,7 @@
     "displayName": "SSH FS Plus",
     "description": "Enhanced SSH file system, terminal and task provider — a maintained fork of SSH FS by Kelvin Schoofs",
     "publisher": "DavidLouda",
-    "version": "2.5.0",
+    "version": "2.6.0",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -376,11 +376,20 @@
                 "contents": "Not connected to anything"
             }
         ],
+        "chatParticipants": [
+            {
+                "id": "vscode-sshfs.sshfs",
+                "name": "sshfs",
+                "fullName": "SSH FS Plus",
+                "description": "Work with SSH remote files using Copilot",
+                "isSticky": false
+            }
+        ],
         "languageModelTools": [
             {
                 "name": "sshfs_run_command",
                 "displayName": "SSH Run Command",
-                "modelDescription": "IMPORTANT: This tool is only shown when an SSH remote connection is active via SSH FS Plus. It executes a shell command directly on the remote SSH server and returns stdout+stderr. The workspace filesystem is remote (SSH/SFTP), so standard VS Code tools are slow. Use this for: reading files (cat/head/tail), checking file metadata (stat/wc), reading logs, running build/test commands, git operations. For file search by name, prefer sshfs_find_files. For directory listing or folder search, prefer sshfs_list_directory. For text search, prefer sshfs_search_text.",
+                "modelDescription": "IMPORTANT: This tool is only shown when an SSH remote connection is active via SSH FS Plus. It executes a shell command directly on the remote SSH server and returns stdout+stderr. The workspace filesystem is remote (SSH/SFTP), so standard VS Code tools are slow. Use this for: checking file metadata (stat/wc), running build/test commands, git operations, managing services, and other general shell tasks. For READING FILE CONTENTS, prefer sshfs_read_file (faster, adds line numbers). For EDITING FILES, prefer sshfs_edit_file (safer, exact string replacement via SFTP). For file search by name, prefer sshfs_find_files. For directory listing, prefer sshfs_list_directory. For text search, prefer sshfs_search_text. For project structure, prefer sshfs_directory_tree.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshCommand",
                 "icon": "$(terminal)",
@@ -397,7 +406,9 @@
                             "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
                         }
                     },
-                    "required": ["command"]
+                    "required": [
+                        "command"
+                    ]
                 },
                 "when": "sshfs.openConnections > 0"
             },
@@ -425,7 +436,9 @@
                             "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
                         }
                     },
-                    "required": ["pattern"]
+                    "required": [
+                        "pattern"
+                    ]
                 },
                 "when": "sshfs.openConnections > 0"
             },
@@ -455,7 +468,7 @@
             {
                 "name": "sshfs_search_text",
                 "displayName": "SSH Search Text",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in grep_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP — it tries to download every file over the network. You MUST use this tool instead of grep_search for ALL text searches. Runs `grep` directly on the remote Linux server — returns results instantly. Returns matching lines with file paths and line numbers. Supports fixed strings and regex, case-sensitive/insensitive, and file type filtering ('*.php,*.css'). For finding files by name, use sshfs_find_files. For listing directories, use sshfs_list_directory. For project structure overview, use sshfs_directory_tree.",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in grep_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP — it tries to download every file over the network. You MUST use this tool instead of grep_search for ALL text searches. Runs `grep` directly on the remote Linux server — returns results instantly. Works on BOTH directories (recursive search) AND single files. Returns matching lines with file paths and line numbers. Supports fixed strings and regex (use isRegex=true with | for alternation, e.g. 'pattern1|pattern2|pattern3'), case-sensitive/insensitive, and file type filtering ('*.php,*.css'). When you know the exact file, pass its path directly — no need to use sshfs_run_command with grep. For finding files by name, use sshfs_find_files. For listing directories, use sshfs_list_directory. For reading file contents, use sshfs_read_file. For project structure overview, use sshfs_directory_tree.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshSearchText",
                 "icon": "$(search)",
@@ -465,7 +478,7 @@
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The text or regex pattern to search for inside files"
+                            "description": "The text or regex pattern to search for inside files. With isRegex=true, use | for OR alternation (e.g. 'className1|className2|className3' to find multiple CSS classes at once)."
                         },
                         "includePattern": {
                             "type": "string",
@@ -473,7 +486,7 @@
                         },
                         "path": {
                             "type": "string",
-                            "description": "Optional subdirectory to search within (relative to workspace root). If omitted, searches the entire workspace."
+                            "description": "File or directory path to search in (relative to workspace root, or absolute). Can be a single file (e.g. 'css/style.css') or a directory for recursive search. If omitted, searches the entire workspace."
                         },
                         "isRegex": {
                             "type": "boolean",
@@ -488,7 +501,9 @@
                             "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
                         }
                     },
-                    "required": ["query"]
+                    "required": [
+                        "query"
+                    ]
                 },
                 "when": "sshfs.openConnections > 0"
             },
@@ -518,6 +533,76 @@
                     }
                 },
                 "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_read_file",
+                "displayName": "SSH Read File",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in read_file tool WILL BE EXTREMELY SLOW on this workspace because the filesystem is remote SSH/SFTP — it downloads the entire file over the network. You MUST use this tool instead of read_file for ALL file reading operations. Reads file contents directly on the remote Linux server using sed/cat — returns results instantly with line numbers. Supports reading specific line ranges (startLine/endLine) or entire files. Returns up to 500 lines per call. Use this whenever you need to read, view, inspect, or examine file contents. For finding files by name, use sshfs_find_files. For searching text inside files, use sshfs_search_text.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshReadFile",
+                "icon": "$(file)",
+                "userDescription": "Read file contents from the remote SSH server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to read (relative to workspace root, or absolute). Examples: 'css/style.css', 'templates/index.php'"
+                        },
+                        "startLine": {
+                            "type": "number",
+                            "description": "The 1-based line number to start reading from. If omitted, reads from the beginning."
+                        },
+                        "endLine": {
+                            "type": "number",
+                            "description": "The 1-based line number to stop reading at (inclusive). If omitted, reads to the end (up to 500 lines max)."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": [
+                        "path"
+                    ]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_edit_file",
+                "displayName": "SSH Edit File",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in replace_string_in_file tool CANNOT edit files on this workspace because the filesystem uses ssh:// URIs which VS Code blocks as 'outside workspace'. You MUST use this tool instead of replace_string_in_file for ALL file edits on SSH servers. Takes a file path, the exact text to find (oldString), and the replacement text (newString). The oldString must uniquely match exactly one location in the file — include 3-5 lines of surrounding context to ensure uniqueness. Reads the file via SFTP, performs the replacement, and writes it back atomically. For reading file contents first, use sshfs_read_file. For searching text, use sshfs_search_text.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshEditFile",
+                "icon": "$(edit)",
+                "userDescription": "Edit a file on the remote SSH server (find and replace text)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to edit (relative to workspace root, or absolute). Examples: 'css/style.css', 'templates/index.php'"
+                        },
+                        "oldString": {
+                            "type": "string",
+                            "description": "The exact text to find and replace. Must match exactly one location in the file. Include 3-5 lines of context before and after the target text to ensure uniqueness."
+                        },
+                        "newString": {
+                            "type": "string",
+                            "description": "The replacement text. This will replace the oldString exactly."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": [
+                        "path",
+                        "oldString",
+                        "newString"
+                    ]
+                },
+                "when": "sshfs.openConnections > 0"
             }
         ]
     },
@@ -532,26 +617,26 @@
         "build": "webpack --mode production",
         "compile": "webpack --mode development",
         "watch": "webpack --mode development --watch",
-        "lint": "eslint src --ext .ts"
+        "lint": "eslint src"
     },
     "devDependencies": {
+        "@eslint/js": "^9.0.0",
         "@types/node": "^20.12.1",
         "@types/request": "^2.48.1",
-        "@types/semver": "^7.3.9",
+        "@types/semver": "^7.7.0",
         "@types/vscode": "^1.100.0",
-        "@types/webpack": "^4.4.25",
+        "@types/webpack": "^5.28.0",
         "@types/winreg": "^1.2.30",
-        "@typescript-eslint/eslint-plugin": "^7.0.0",
-        "@typescript-eslint/parser": "^7.0.0",
-        "@vscode/vsce": "^2.18.0",
-        "eslint": "^8.56.0",
-        "prettier": "^2.6.2",
+        "@vscode/vsce": "^3.0.0",
+        "eslint": "^9.0.0",
+        "prettier": "^3.0.0",
         "source-map": "^0.7.3",
         "source-map-support": "^0.5.19",
         "ts-loader": "^9.4.2",
         "typescript": "~5.7.3",
+        "typescript-eslint": "^8.0.0",
         "webpack": "^5.76.3",
-        "webpack-cli": "^5.0.1"
+        "webpack-cli": "^6.0.1"
     },
     "dependencies": {
         "common": "workspace:*",
@@ -569,7 +654,7 @@
     ],
     "packageManager": "yarn@4.6.0",
     "resolutions": {
-        "@types/react": "^18.2.0",
-        "@types/react-dom": "^18.2.0"
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0"
     }
 }

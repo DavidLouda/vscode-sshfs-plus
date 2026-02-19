@@ -31,6 +31,7 @@ export type Action = ActionTypes[keyof ActionTypes];
 
 interface IAction {
   type: ActionType;
+  [key: string]: unknown;
 }
 
 /* Startscreen */

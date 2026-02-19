@@ -5,7 +5,6 @@
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const PnpWebpackPlugin = require(`pnp-webpack-plugin`);
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const ESLintWebpackPlugin = require('eslint-webpack-plugin');
@@ -66,12 +65,6 @@ module.exports = (env, options) => {
     },
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
-      plugins: [PnpWebpackPlugin]
-    },
-    resolveLoader: {
-      plugins: [
-        PnpWebpackPlugin.moduleLoader(module),
-      ],
     },
     module: {
       rules: [
@@ -83,10 +76,11 @@ module.exports = (env, options) => {
         },
         {
           test: [/\.bmp$/, /\.gif$/, /\.jpe?g$/, /\.png$/],
-          loader: require.resolve('url-loader'),
-          options: {
-            limit: 10000,
-            name: 'static/media/[name].[hash:8].[ext]',
+          type: 'asset',
+          parser: {
+            dataUrlCondition: {
+              maxSize: 10000,
+            },
           },
         },
         {

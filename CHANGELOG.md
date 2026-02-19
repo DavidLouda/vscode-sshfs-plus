@@ -1,6 +1,12 @@
 
 # Changelog
 
+## v2.6.2 — SSH FS Plus (2026-02-19)
+
+### Changed
+
+- **README rewrite** — new project motivation section, Copilot tools overview, dependency comparison table
+
 ## v2.6.1 — SSH FS Plus (2026-02-19)
 
 ### Changed

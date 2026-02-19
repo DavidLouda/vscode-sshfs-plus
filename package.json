@@ -3,7 +3,7 @@
     "displayName": "SSH FS Plus",
     "description": "Enhanced SSH file system, terminal and task provider — a maintained fork of SSH FS by Kelvin Schoofs",
     "publisher": "DavidLouda",
-    "version": "2.6.1",
+    "version": "2.6.2",
     "engines": {
         "vscode": "^1.100.0"
     },

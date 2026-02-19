@@ -3,7 +3,7 @@
     "displayName": "SSH FS Plus",
     "description": "Enhanced SSH file system, terminal and task provider — a maintained fork of SSH FS by Kelvin Schoofs",
     "publisher": "DavidLouda",
-    "version": "2.4.0",
+    "version": "2.5.0",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -380,7 +380,7 @@
             {
                 "name": "sshfs_run_command",
                 "displayName": "SSH Run Command",
-                "modelDescription": "Executes a shell command on a remote SSH server and returns stdout+stderr. The workspace is mounted over SSH via SSH FS Plus. Use this to: read files (cat, head, tail), list directories (ls, find, tree), check file metadata (stat, wc), read logs, run build/test commands, git operations, and any other shell tasks. For finding files by name, prefer sshfs_find_files. For searching text in files, prefer sshfs_search_text. The command runs in the default login shell of the SSH user.",
+                "modelDescription": "IMPORTANT: This tool is only shown when an SSH remote connection is active via SSH FS Plus. It executes a shell command directly on the remote SSH server and returns stdout+stderr. The workspace filesystem is remote (SSH/SFTP), so standard VS Code tools are slow. Use this for: reading files (cat/head/tail), checking file metadata (stat/wc), reading logs, running build/test commands, git operations. For file search by name, prefer sshfs_find_files. For directory listing or folder search, prefer sshfs_list_directory. For text search, prefer sshfs_search_text.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshCommand",
                 "icon": "$(terminal)",
@@ -404,11 +404,11 @@
             {
                 "name": "sshfs_find_files",
                 "displayName": "SSH Find Files",
-                "modelDescription": "Searches for files by name on a remote SSH server. The workspace is mounted over SSH and the standard file_search tool is extremely slow or times out because it walks directories via SFTP over the network. This tool runs the `find` command directly on the remote server and returns results instantly. YOU MUST USE THIS TOOL instead of file_search whenever the workspace scheme is 'ssh://' or the workspace is provided by SSH FS Plus. Accepts file names (e.g. 'mobile-optimized.css'), glob patterns ('*.php', 'config*'), and partial names. Returns file paths relative to the workspace root.",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in file_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP. You MUST use this tool instead of file_search for ALL name-based searches — it finds BOTH files AND folders/directories. Runs `find` directly on the remote Linux server — returns results instantly. Accepts: file names ('style.css'), folder names ('ThemeOffice'), glob patterns ('*.php', 'config*'), partial names. Returns paths relative to workspace root. Use this whenever asked to find, locate, or search for a file or folder by name. To see what is inside a specific directory, use sshfs_list_directory. For project structure overview, use sshfs_directory_tree. For searching text INSIDE files, use sshfs_search_text.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshFindFiles",
                 "icon": "$(search)",
-                "userDescription": "Find files on the remote SSH server by name or pattern",
+                "userDescription": "Find files or folders on the remote SSH server by name or pattern",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -430,9 +430,32 @@
                 "when": "sshfs.openConnections > 0"
             },
             {
+                "name": "sshfs_list_directory",
+                "displayName": "SSH List Directory",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in list_dir tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP. You MUST use this tool instead of list_dir to see what is inside a specific directory (like 'ls'). Shows files and subdirectories of the given path with type indicators (/ suffix for directories). Use this ONLY to browse contents of a known directory. To FIND files or folders by name, use sshfs_find_files instead. For project structure overview, use sshfs_directory_tree.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshListDir",
+                "icon": "$(folder)",
+                "userDescription": "List the contents of a directory on the remote SSH server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to list (relative to workspace root). If omitted, lists the workspace root."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    }
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
                 "name": "sshfs_search_text",
                 "displayName": "SSH Search Text",
-                "modelDescription": "Searches for text content inside files on a remote SSH server. The workspace is mounted over SSH and the standard grep_search tool is extremely slow or times out because it downloads and scans every file via SFTP over the network. This tool runs `grep` directly on the remote server and returns results instantly. YOU MUST USE THIS TOOL instead of grep_search whenever the workspace scheme is 'ssh://' or the workspace is provided by SSH FS Plus. Returns matching lines with file paths and line numbers. Supports fixed strings and regex patterns, case-sensitive/insensitive search, and file type filtering (e.g. '*.php,*.css').",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in grep_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP — it tries to download every file over the network. You MUST use this tool instead of grep_search for ALL text searches. Runs `grep` directly on the remote Linux server — returns results instantly. Returns matching lines with file paths and line numbers. Supports fixed strings and regex, case-sensitive/insensitive, and file type filtering ('*.php,*.css'). For finding files by name, use sshfs_find_files. For listing directories, use sshfs_list_directory. For project structure overview, use sshfs_directory_tree.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshSearchText",
                 "icon": "$(search)",
@@ -466,6 +489,33 @@
                         }
                     },
                     "required": ["query"]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_directory_tree",
+                "displayName": "SSH Directory Tree",
+                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. Use this tool to get a full hierarchical directory tree of the remote project (or a subdirectory). Returns an indented tree showing all files and folders up to a configurable depth — equivalent to the 'tree' command. This replaces hundreds of slow recursive SFTP readdir calls with a single fast server-side command. Use this FIRST when you need to understand the project structure, explore the codebase layout, or find where things are located. For listing a single directory's contents, use sshfs_list_directory. For finding specific files by name, use sshfs_find_files.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshTree",
+                "icon": "$(list-tree)",
+                "userDescription": "Get the directory tree structure of a remote SSH project",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to get the tree of (relative to workspace root). If omitted, uses the workspace root."
+                        },
+                        "depth": {
+                            "type": "number",
+                            "description": "Maximum depth of the tree (1-8). Default is 3. Use lower values for large projects to avoid excessive output."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    }
                 },
                 "when": "sshfs.openConnections > 0"
             }

@@ -22,6 +22,23 @@ interface SSHFindFilesInput {
 }
 
 /**
+ * Input schema for the sshfs_list_directory language model tool.
+ */
+interface SSHListDirectoryInput {
+    path?: string;
+    connectionName?: string;
+}
+
+/**
+ * Input schema for the sshfs_directory_tree language model tool.
+ */
+interface SSHDirectoryTreeInput {
+    path?: string;
+    depth?: number;
+    connectionName?: string;
+}
+
+/**
  * Input schema for the sshfs_search_text language model tool.
  */
 interface SSHSearchTextInput {
@@ -235,7 +252,7 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
 
         // Determine search root from workspace folder config or input path
         const root = conn.config.root || '/';
-        const searchPath = path
+        let searchPath = path
             ? (path.startsWith('/') ? path : root.replace(/\/$/, '') + '/' + path)
             : root;
 
@@ -243,15 +260,23 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
         let normalized = pattern.trim()
             .replace(/^(\*\*\/)+/, '')
             .replace(/^\*\//, '');
-        // Extract filename from path patterns
+        // Extract path prefix and filename from path-containing patterns
+        // e.g. "administrator/modules/mod_jcefilebrowser/*" → prefix="administrator/modules/mod_jcefilebrowser", name="*"
         const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
+        let pathPrefix = '';
         if (lastSlash >= 0) {
+            pathPrefix = normalized.substring(0, lastSlash);
             normalized = normalized.substring(lastSlash + 1);
         }
+
+        // Apply path prefix to narrow search scope
+        if (pathPrefix) {
+            searchPath = searchPath.replace(/\/$/, '') + '/' + pathPrefix;
+        }
+
         if (!normalized) {
-            return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart('Error: empty pattern after normalization')
-            ]);
+            // Pattern ended with / — list all files in the directory
+            normalized = '*';
         }
 
         // Convert ** to * for find compatibility
@@ -275,12 +300,16 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
             findPatterns = [`*${normalized}*`];
         }
 
-        Logging.info`ChatTool sshfs_find_files: pattern="${pattern}" normalized="${normalized}" searchPath="${searchPath}"`;
+        Logging.info`ChatTool sshfs_find_files: pattern="${pattern}" normalized="${normalized}" pathPrefix="${pathPrefix}" searchPath="${searchPath}"`;
+
+        // If pattern is just "*" (listing a directory), use -maxdepth 1 for direct listing
+        const isDirectoryListing = normalized === '*' && pathPrefix;
 
         for (const fp of findPatterns) {
             if (token.isCancellationRequested) break;
 
-            const cmd = `find ${shellEscape(searchPath)} \\( ${excludeParts} \\) -o -type f -iname ${shellEscape(fp)} -print 2>/dev/null | head -n ${MAX_RESULTS}`;
+            const depthLimit = isDirectoryListing ? '-maxdepth 1 ' : '';
+            const cmd = `find ${shellEscape(searchPath)} ${depthLimit}\\( ${excludeParts} \\) -o -iname ${shellEscape(fp)} -print 2>/dev/null | head -n ${MAX_RESULTS}`;
             const output = await execCommand(conn.client, cmd, token, 15_000);
 
             if (output && output.trim()) {
@@ -297,8 +326,8 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
                 }).join('\n');
 
                 const summary = lines.length >= MAX_RESULTS
-                    ? `Found ${MAX_RESULTS}+ files matching "${pattern}" (results truncated):\n`
-                    : `Found ${lines.length} file(s) matching "${pattern}":\n`;
+                    ? `Found ${MAX_RESULTS}+ results matching "${pattern}" (results truncated):\n`
+                    : `Found ${lines.length} result(s) matching "${pattern}":\n`;
 
                 return new vscode.LanguageModelToolResult([
                     new vscode.LanguageModelTextPart(summary + formatted)
@@ -307,7 +336,7 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
         }
 
         return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`No files found matching "${pattern}" in ${searchPath}`)
+            new vscode.LanguageModelTextPart(`No files or directories found matching "${pattern}" in ${searchPath}`)
         ]);
     }
 
@@ -317,6 +346,225 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
     ): Promise<vscode.PreparedToolInvocation> {
         return {
             invocationMessage: `Searching for files matching "${options.input.pattern}" on SSH server...`,
+        };
+    }
+}
+
+/**
+ * Language Model Tool — lists the contents of a single directory on a remote SSH server.
+ * Like running `ls` — shows files and subdirectories with type indicators.
+ */
+class SSHListDirectoryTool implements vscode.LanguageModelTool<SSHListDirectoryInput> {
+    constructor(private readonly connectionManager: ConnectionManager) {}
+
+    private getConnection(connectionName?: string) {
+        const conn = connectionName
+            ? this.connectionManager.getActiveConnection(connectionName)
+            : this.connectionManager.getActiveConnections()[0];
+        if (!conn) {
+            const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
+            throw new Error(
+                connectionName
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
+                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+            );
+        }
+        return conn;
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<SSHListDirectoryInput>,
+        token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { path, connectionName } = options.input;
+        const conn = this.getConnection(connectionName);
+
+        const root = conn.config.root || '/';
+        const targetPath = path
+            ? (path.startsWith('/') ? path : root.replace(/\/$/, '') + '/' + path)
+            : root;
+
+        // Default directory excludes
+        const defaultExcludes = ['.git', 'node_modules', '.yarn', '__pycache__', '.cache', '.venv', 'vendor'];
+        const excludeParts = defaultExcludes.map(e => `-name ${shellEscape(e)} -prune`).join(' -o ');
+
+        const cmd = `find ${shellEscape(targetPath)} -maxdepth 1 \\( ${excludeParts} \\) -o -print 2>/dev/null | sort`;
+        Logging.info`ChatTool sshfs_list_directory: listing contents of ${targetPath}`;
+
+        const output = await execCommand(conn.client, cmd, token, 15_000);
+
+        if (!output || !output.trim()) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Directory "${targetPath}" is empty or does not exist`)
+            ]);
+        }
+
+        const lines = output.trim().split('\n').filter(l => l.trim());
+        Logging.info`ChatTool sshfs_list_directory: ${lines.length} results`;
+
+        // Classify each entry as file or directory
+        const classifyCmd = `for f in ${lines.map(l => shellEscape(l.trim())).join(' ')}; do if [ -d "$f" ]; then echo "D $f"; else echo "F $f"; fi; done 2>/dev/null`;
+        const classifyOutput = await execCommand(conn.client, classifyCmd, token, 10_000);
+
+        let formatted: string;
+
+        if (classifyOutput && classifyOutput.trim()) {
+            const classifiedLines = classifyOutput.trim().split('\n');
+            formatted = classifiedLines.map(l => {
+                const isDir = l.startsWith('D ');
+                const fullPath = l.substring(2).trim();
+                let relativePath = fullPath;
+                if (fullPath.startsWith(targetPath)) {
+                    relativePath = fullPath.substring(targetPath.length).replace(/^\//, '');
+                }
+                if (!relativePath) return null; // Skip the directory itself
+                return isDir ? `${relativePath}/` : relativePath;
+            }).filter(Boolean).join('\n');
+        } else {
+            // Fallback: just show relative paths
+            formatted = lines.map(l => {
+                const trimmed = l.trim();
+                if (trimmed.startsWith(targetPath)) {
+                    const rel = trimmed.substring(targetPath.length).replace(/^\//, '');
+                    return rel || null;
+                }
+                return trimmed;
+            }).filter(Boolean).join('\n');
+        }
+
+        const relTarget = targetPath.startsWith(root)
+            ? targetPath.substring(root.length).replace(/^\//, '') || '/'
+            : targetPath;
+
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Contents of ${relTarget}:\n${formatted}`)
+        ]);
+    }
+
+    async prepareInvocation(
+        options: vscode.LanguageModelToolInvocationPrepareOptions<SSHListDirectoryInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.PreparedToolInvocation> {
+        const dirPath = options.input.path || '/';
+        return {
+            invocationMessage: `Listing contents of "${dirPath}" on SSH server...`,
+        };
+    }
+}
+
+/**
+ * Language Model Tool — retrieves the directory tree structure of a remote project.
+ * Uses the `tree` command (with `find` fallback) to show the full hierarchy in one call,
+ * replacing hundreds of recursive SFTP readdir operations.
+ */
+class SSHDirectoryTreeTool implements vscode.LanguageModelTool<SSHDirectoryTreeInput> {
+    constructor(private readonly connectionManager: ConnectionManager) {}
+
+    private getConnection(connectionName?: string) {
+        const conn = connectionName
+            ? this.connectionManager.getActiveConnection(connectionName)
+            : this.connectionManager.getActiveConnections()[0];
+        if (!conn) {
+            const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
+            throw new Error(
+                connectionName
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
+                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+            );
+        }
+        return conn;
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<SSHDirectoryTreeInput>,
+        token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { path, connectionName } = options.input;
+        // Clamp depth to 1-8, default 3
+        const depth = Math.max(1, Math.min(8, options.input.depth ?? 3));
+        const conn = this.getConnection(connectionName);
+
+        const root = conn.config.root || '/';
+        const targetPath = path
+            ? (path.startsWith('/') ? path : root.replace(/\/$/, '') + '/' + path)
+            : root;
+
+        const defaultExcludes = ['.git', 'node_modules', '.yarn', '__pycache__', '.cache', '.venv', 'vendor'];
+
+        Logging.info`ChatTool sshfs_directory_tree: path="${targetPath}" depth=${depth}`;
+
+        // Try `tree` command first — produces nicely formatted output
+        const treeExclude = defaultExcludes.join('|');
+        const treeCmd = `tree -L ${depth} -a --noreport --dirsfirst --charset ascii -I ${shellEscape(treeExclude)} ${shellEscape(targetPath)} 2>/dev/null`;
+        let output = await execCommand(conn.client, treeCmd, token, 20_000);
+
+        if (!output || !output.trim() || output.includes('command not found')) {
+            // Fallback: use find + sort and build a simple indented tree
+            const excludeParts = defaultExcludes.map(e => `-name ${shellEscape(e)} -prune`).join(' -o ');
+            const findCmd = `find ${shellEscape(targetPath)} -maxdepth ${depth} \\( ${excludeParts} \\) -o -print 2>/dev/null | sort`;
+            const findOutput = await execCommand(conn.client, findCmd, token, 20_000);
+
+            if (!findOutput || !findOutput.trim()) {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`Directory "${targetPath}" is empty or does not exist.`)
+                ]);
+            }
+
+            // Build indented tree from flat find output
+            const basePath = targetPath.replace(/\/$/, '');
+            const lines = findOutput.trim().split('\n');
+            const treeLines: string[] = [];
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed === basePath) continue;
+
+                // Make relative to targetPath
+                let rel = trimmed;
+                if (trimmed.startsWith(basePath + '/')) {
+                    rel = trimmed.substring(basePath.length + 1);
+                } else if (trimmed.startsWith(basePath)) {
+                    rel = trimmed.substring(basePath.length);
+                }
+                if (!rel) continue;
+
+                const parts = rel.split('/');
+                const indent = '  '.repeat(parts.length - 1);
+                const name = parts[parts.length - 1];
+                treeLines.push(`${indent}${name}`);
+            }
+
+            output = treeLines.join('\n');
+        }
+
+        // Truncate if output is too large
+        const MAX_OUTPUT = 60_000;
+        if (output.length > MAX_OUTPUT) {
+            output = output.substring(0, MAX_OUTPUT) + '\n... [truncated — use a smaller depth or narrower path]';
+        }
+
+        // Count entries for summary
+        const lineCount = output.trim().split('\n').length;
+
+        const relTarget = targetPath.startsWith(root)
+            ? targetPath.substring(root.length).replace(/^\//, '') || '/'
+            : targetPath;
+
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(
+                `Directory tree of ${relTarget} (depth ${depth}, ${lineCount} entries):\n${output}`
+            )
+        ]);
+    }
+
+    async prepareInvocation(
+        options: vscode.LanguageModelToolInvocationPrepareOptions<SSHDirectoryTreeInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.PreparedToolInvocation> {
+        const dirPath = options.input.path || '/';
+        const depth = options.input.depth ?? 3;
+        return {
+            invocationMessage: `Getting directory tree of "${dirPath}" (depth ${depth}) on SSH server...`,
         };
     }
 }
@@ -457,6 +705,20 @@ export function registerChatTools(
         Logging.info`Registered Language Model Tool: sshfs_find_files — Copilot file search via 'find'`;
     } catch (e) {
         Logging.warning`Failed to register sshfs_find_files: ${e}`;
+    }
+
+    try {
+        subscribe(vscode.lm.registerTool('sshfs_list_directory', new SSHListDirectoryTool(connectionManager)));
+        Logging.info`Registered Language Model Tool: sshfs_list_directory — Copilot directory listing/search`;
+    } catch (e) {
+        Logging.warning`Failed to register sshfs_list_directory: ${e}`;
+    }
+
+    try {
+        subscribe(vscode.lm.registerTool('sshfs_directory_tree', new SSHDirectoryTreeTool(connectionManager)));
+        Logging.info`Registered Language Model Tool: sshfs_directory_tree — Copilot directory tree via 'tree'/'find'`;
+    } catch (e) {
+        Logging.warning`Failed to register sshfs_directory_tree: ${e}`;
     }
 
     try {

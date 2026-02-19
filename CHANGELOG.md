@@ -1,6 +1,58 @@
 
 # Changelog
 
+## v2.5.0 — SSH FS Plus (2026-02-19)
+
+### New
+
+- **`sshfs_directory_tree` Copilot tool** — new Language Model Tool that retrieves the full hierarchical directory tree of a remote project in a single server-side command. Uses `tree` (with `find` fallback). Key features:
+  - Configurable depth (1–8, default 3)
+  - Excludes common junk directories (`.git`, `node_modules`, `vendor`, etc.)
+  - Returns formatted indented tree structure
+  - Replaces hundreds of slow recursive SFTP `readdir` calls with one fast command
+  - Copilot uses this automatically to understand project structure at the start of conversations
+
+### Fixed
+
+- **`sshfs_find_files` now finds both files and directories** — previously used `-type f` which excluded folders entirely (e.g. searching for "ThemeOffice" folder returned nothing). Now finds files AND folders with a single tool.
+
+### Changed
+
+- **Simplified tool roles to prevent Copilot confusion** — each tool now has exactly one clear purpose:
+  - `sshfs_find_files` — find files/folders by name (the ONE tool for all name-based searches)
+  - `sshfs_list_directory` — list contents of a specific directory (like `ls`, no search mode)
+  - `sshfs_directory_tree` — project structure overview (like `tree`)
+  - `sshfs_search_text` — search text inside files (like `grep`)
+  - `sshfs_run_command` — general shell commands
+- **Removed search mode from `sshfs_list_directory`** — directory name search is now handled by `sshfs_find_files`, eliminating tool overlap that caused Copilot to pick the wrong tool
+
+## v2.4.3 — SSH FS Plus (2026-02-19)
+
+### Fixed
+
+- **Copilot ignoring SSH tools** — drastically strengthened `modelDescription` for all 4 Language Model Tools (`sshfs_run_command`, `sshfs_find_files`, `sshfs_list_directory`, `sshfs_search_text`). Each description now clearly states that built-in tools (`file_search`, `list_dir`, `grep_search`) WILL FAIL on SSH workspaces due to SFTP timeouts, and explicitly directs Copilot to use the SSH-specific tool instead. Previously, Copilot often chose built-in tools first, which timed out, instead of using the faster server-side tools.
+
+## v2.4.2 — SSH FS Plus (2026-02-18)
+
+### New
+
+- **`sshfs_list_directory` Copilot tool** — new dedicated Language Model Tool for directory operations on remote SSH servers. Supports two modes:
+  - **List mode**: lists contents of a directory (files and subdirectories) with type indicators (`/` suffix for directories)
+  - **Search mode**: finds directories by name or glob pattern recursively (e.g. `templates`, `mod_*`, `*admin*`)
+  - Automatically excludes common directories (`.git`, `node_modules`, `vendor`, etc.)
+  - Copilot agent uses this instead of the slow SFTP-based `list_dir` tool
+
+### Fixed
+
+- **`sshfs_find_files` no longer blocks directory searches** — previously used `-type f` exclusively, making it impossible to discover directories. Directory discovery is now handled by the new `sshfs_list_directory` tool.
+
+## v2.4.1 — SSH FS Plus (2026-02-18)
+
+### Fixed
+
+- **`sshfs_find_files` path prefix handling** — patterns like `administrator/modules/mod_jcefilebrowser/*` now correctly narrow the search to the specified subdirectory instead of searching the entire workspace root. Previously the path prefix was extracted but never applied to the search path, causing `find -iname '*'` to match every file.
+- Directory listing patterns (trailing `/*`) now use `-maxdepth 1` for fast direct listing instead of recursive search.
+
 ## v2.4.0 — SSH FS Plus (2026-02-18)
 
 ### New — Copilot Language Model Tools

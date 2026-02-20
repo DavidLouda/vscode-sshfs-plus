@@ -170,7 +170,8 @@ export async function calculateActualConfig(config: FileSystemConfig): Promise<F
     config.password = true as any;
     await promptFields(config, 'password');
   }
-  logging.debug`\tFinal configuration:\n${config}`;
+  const sanitized = { ...config, password: config.password ? '***' : undefined, passphrase: config.passphrase ? '***' : undefined, privateKey: config.privateKey ? '***' : undefined };
+  logging.debug`\tFinal configuration:\n${sanitized}`;
   return config;
 }
 
@@ -252,7 +253,7 @@ export async function createSSH(config: FileSystemConfig, sock?: NodeJS.Readable
           ignoreFocusOut: true,
           prompt: prompt.prompt.replace(/:\s*$/, ''),
         }),
-      )).then(finish).catch(e => logging.error(e));
+      )).then(a => finish(a as string[])).catch(e => logging.error(e as Error));
     });
     client.on('error', (error: Error & { description?: string }) => {
       if (error.description) {
@@ -393,7 +394,7 @@ export async function getSFTP(client: Client, config: FileSystemConfig): Promise
   // Start sftpCommand (e.g. /usr/lib/openssh/sftp-server) and wrap everything nicely
   const sftp = new SFTP(client, shell, { debug: config.debug });
   shell.on('data', data => sftp.push(data));
-  shell.on('close', data => data.end());
+  shell.on('close', () => sftp.end());
   await toPromise(cb => shell.write(`${cmd}\n`, cb));
   sftp._init();
   return sftp;

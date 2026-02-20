@@ -39,7 +39,14 @@ async function ensureCachedFile(connection: Connection, key: string, path: strin
 }
 
 async function rcInitializePATH(connection: Connection): Promise<string[] | string> {
-    const dir = `/tmp/.sshfs_plus.RcBin.${connection.actualConfig.username || Date.now()}`;
+    const mktemp = await toPromise<ClientChannel>(cb => connection.client.exec('mktemp -d /tmp/.sshfs_plus.XXXXXX', cb))
+        .then(ch => new Promise<string>((resolve, reject) => {
+            let out = '';
+            ch.on('data', (d: Buffer) => out += d.toString());
+            ch.on('close', () => resolve(out.trim()));
+            ch.on('error', reject);
+        })).catch(() => null);
+    const dir = mktemp || `/tmp/.sshfs_plus.RcBin.${connection.actualConfig.username || Date.now()}`;
     const sftp = await toPromise<SFTP>(cb => connection.client.sftp(cb));
     await toPromise(cb => sftp!.mkdir(dir, { mode: 0o755 }, cb)).catch(() => { });
     const [, path] = await ensureCachedFile(connection, 'CmdCode', `${dir}/code`, SCRIPT_COMMAND_CODE, sftp);

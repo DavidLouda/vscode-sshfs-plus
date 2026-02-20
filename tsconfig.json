@@ -1,12 +1,12 @@
 {
     "compilerOptions": {
-        "strictNullChecks": true,
+        "strict": true,
         "module": "esnext",
         "moduleResolution": "node",
-        "target": "ES2019",
+        "target": "ES2022",
         "outDir": "out",
         "lib": [
-            "ES2019"
+            "ES2022"
         ],
         "sourceMap": true,
         "rootDir": "src"

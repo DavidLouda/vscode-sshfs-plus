@@ -5,6 +5,7 @@ import type * as ssh2 from 'ssh2';
 import * as vscode from 'vscode';
 import { FlagValue, getFlag, subscribeToGlobalFlags } from './flags';
 import { Logger, Logging, LOGGING_NO_STACKTRACE, LOGGING_SINGLE_LINE_STACKTRACE, withStacktraceOffset } from './logging';
+import { getQuickDiffManager } from './quickDiff';
 import { toPromise } from './utils';
 
 // This makes it report a single line of the stacktrace of where the e.g. logger.info() call happened
@@ -43,8 +44,8 @@ DEBUG_NOTIFY_FLAGS.all = [...DEBUG_NOTIFY_FLAGS.write, 'readdirectory', 'readfil
 export class SSHFileSystem implements vscode.FileSystemProvider {
   protected onCloseEmitter = new vscode.EventEmitter<void>();
   protected onDidChangeFileEmitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-  protected debugFlags: string[];
-  protected notifyErrorFlags: string[];
+  protected debugFlags: string[] = [];
+  protected notifyErrorFlags: string[] = [];
   public closed = false;
   public closing = false;
   public copy = undefined;
@@ -96,30 +97,50 @@ export class SSHFileSystem implements vscode.FileSystemProvider {
     const entries = await toPromise<ssh2.sftp.DirectoryEntry[]>(cb => this.sftp.readdir(uri.path, cb))
       .catch((e) => this.handleError('readDirectory', uri, e, true) as never);
     return Promise.all(entries.map(async (file) => {
-      const furi = uri.with({ path: `${uri.path}${uri.path.endsWith('/') ? '' : '/'}${file.filename}` });
-      // Mode in octal representation is 120XXX for links, e.g. 120777
-      // Any link's mode & 170000 should equal 120000 (using the octal system, at least)
-      const link = (file.attrs.mode! & 61440) === 40960 ? vscode.FileType.SymbolicLink : 0;
-      try {
-        const type = (await this.stat(furi)).type;
-        return [file.filename, type | link] as [string, vscode.FileType];
-      } catch (e) {
-        this.logging.warning.withOptions(LOGGING_SINGLE_LINE_STACKTRACE)`Error in readDirectory for ${furi}: ${e}`;
-        return [file.filename, vscode.FileType.Unknown | link] as [string, vscode.FileType];
+      const mode = file.attrs.mode! & 61440; // S_IFMT mask
+      const isSymlink = mode === 40960; // S_IFLNK
+      const link = isSymlink ? vscode.FileType.SymbolicLink : 0;
+      // For symlinks we need stat() to resolve the target type; for regular files/dirs we can use mode directly
+      if (isSymlink) {
+        const furi = uri.with({ path: `${uri.path}${uri.path.endsWith('/') ? '' : '/'}${file.filename}` });
+        try {
+          const type = (await this.stat(furi)).type;
+          return [file.filename, type | link] as [string, vscode.FileType];
+        } catch (e) {
+          this.logging.warning.withOptions(LOGGING_SINGLE_LINE_STACKTRACE)`Error in readDirectory for ${furi}: ${e}`;
+          return [file.filename, vscode.FileType.Unknown | link] as [string, vscode.FileType];
+        }
       }
+      let type = vscode.FileType.Unknown;
+      if (mode === 32768) type = vscode.FileType.File;       // S_IFREG
+      else if (mode === 16384) type = vscode.FileType.Directory; // S_IFDIR
+      return [file.filename, type] as [string, vscode.FileType];
     }));
   }
   public createDirectory(uri: vscode.Uri): void | Promise<void> {
     return toPromise<void>(cb => this.sftp.mkdir(uri.path, cb)).catch(e => this.handleError('createDirectory', uri, e, true));
   }
   public readFile(uri: vscode.Uri): Uint8Array | Promise<Uint8Array> {
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
     return new Promise((resolve, reject) => {
       const stream = this.sftp.createReadStream(uri.path, { autoClose: true });
-      const bufs = [];
-      stream.on('data', bufs.push.bind(bufs));
+      const bufs: Buffer[] = [];
+      let totalSize = 0;
+      stream.on('data', (chunk: Buffer) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_FILE_SIZE) {
+          stream.destroy();
+          reject(new Error(`File exceeds ${MAX_FILE_SIZE / 1024 / 1024} MB size limit: ${uri.path}`));
+          return;
+        }
+        bufs.push(chunk);
+      });
       stream.on('error', e => this.handleError('readFile', uri, e, reject));
       stream.on('close', () => {
-        resolve(new Uint8Array(Buffer.concat(bufs)));
+        const content = new Uint8Array(Buffer.concat(bufs));
+        // Cache the original content for QuickDiff gutter indicators
+        getQuickDiffManager()?.cacheOriginal(uri, content);
+        resolve(content);
       });
     });
   }
@@ -131,16 +152,22 @@ export class SSHFileSystem implements vscode.FileSystemProvider {
         const stat = await toPromise<ssh2.sftp.Stats>(cb => this.sftp.stat(uri.path, cb));
         mode = stat.mode;
         fileExists = true;
-      } catch (e) {
+      } catch (e: any) {
         if (e.message === 'No such file') {
           mode = this.config.newFileMode as number;
           if (typeof mode === 'string') mode = Number(mode);
           if (typeof mode !== 'number') mode = 0o664;
           if (Number.isNaN(mode)) throw new Error(`Invalid umask '${this.config.newFileMode}'`);
         } else {
-          this.handleError('writeFile', uri, e);
+          this.handleError('writeFile', uri, e as Error);
           vscode.window.showWarningMessage(`Couldn't read the permissions for '${uri.path}', permissions might be overwritten`);
         }
+      }
+      if (fileExists && !options.overwrite) {
+        return reject(vscode.FileSystemError.FileExists(uri));
+      }
+      if (!fileExists && !options.create) {
+        return reject(vscode.FileSystemError.FileNotFound(uri));
       }
       const stream = this.sftp.createWriteStream(uri.path, { mode, flags: 'w' });
       stream.on('error', e => this.handleError('writeFile', uri, e, reject));
@@ -156,12 +183,29 @@ export class SSHFileSystem implements vscode.FileSystemProvider {
     if (stats.type & (vscode.FileType.SymbolicLink | vscode.FileType.File)) {
       return toPromise(cb => this.sftp.unlink(uri.path, cb))
         .then(fireEvent).catch(e => this.handleError('delete', uri, e, true));
-    } else if ((stats.type & vscode.FileType.Directory) && options.recursive) {
+    } else if (stats.type & vscode.FileType.Directory) {
+      if (options.recursive) {
+        await this.deleteDirectoryRecursive(uri);
+        return fireEvent();
+      }
       return toPromise(cb => this.sftp.rmdir(uri.path, cb))
         .then(fireEvent).catch(e => this.handleError('delete', uri, e, true));
     }
     return toPromise(cb => this.sftp.unlink(uri.path, cb))
       .then(fireEvent).catch(e => this.handleError('delete', uri, e, true));
+  }
+  private async deleteDirectoryRecursive(uri: vscode.Uri): Promise<void> {
+    const entries = await toPromise<ssh2.sftp.DirectoryEntry[]>(cb => this.sftp.readdir(uri.path, cb));
+    for (const entry of entries) {
+      const childUri = uri.with({ path: `${uri.path}/${entry.filename}` });
+      const mode = entry.attrs.mode! & 61440;
+      if (mode === 16384) { // S_IFDIR
+        await this.deleteDirectoryRecursive(childUri);
+      } else {
+        await toPromise(cb => this.sftp.unlink(childUri.path, cb));
+      }
+    }
+    await toPromise<void>(cb => this.sftp.rmdir(uri.path, cb));
   }
   public rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean; }): void | Promise<void> {
     return toPromise<void>(cb => this.sftp.rename(oldUri.path, newUri.path, cb))

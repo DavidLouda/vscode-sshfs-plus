@@ -4,7 +4,8 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: sans-serif;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
 }
 
 div.App {
@@ -18,37 +19,40 @@ div.Window {
 }
 
 button {
-  background: var(--vscode-settings-dropdownBackground);
+  background: var(--vscode-button-secondaryBackground, var(--vscode-settings-dropdownBackground));
   border: 1px solid var(--vscode-settings-dropdownBorder);
-  color: var(--vscode-settings-dropdownForeground);
-  font-weight: 200;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-settings-dropdownForeground));
+  font-weight: 400;
+  font-size: 12px;
   border-radius: 3px;
-  padding: 8px;
+  padding: 6px 14px;
   margin: 5px;
   width: auto;
   cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 button:disabled {
-  opacity: 0.5;
-  cursor: inherit;
+  opacity: 0.4;
+  cursor: not-allowed;
 }
-button:hover {
-  font-weight: 500;
+button:hover:not(:disabled) {
+  opacity: 0.85;
 }
 button.cancel {
-  background-color: rgb(107, 107, 107);
-  border-color: rgb(177, 177, 177);
-  color: rgb(255, 255, 255);
+  background-color: var(--vscode-button-secondaryBackground, rgb(107, 107, 107));
+  border-color: var(--vscode-button-secondaryBackground, rgb(107, 107, 107));
+  color: var(--vscode-button-secondaryForeground, rgb(255, 255, 255));
 }
 button.delete {
   background-color: rgb(156, 14, 14);
-  border-color: rgb(179, 17, 17);
+  border-color: rgb(156, 14, 14);
   color: rgb(255, 255, 255);
 }
 button.confirm {
-  background-color: rgb(14, 99, 156);
-  border-color: rgb(18, 118, 185);
-  color: rgb(255, 255, 255);
+  background-color: var(--vscode-button-background, rgb(14, 99, 156));
+  border-color: var(--vscode-button-background, rgb(14, 99, 156));
+  color: var(--vscode-button-foreground, rgb(255, 255, 255));
+  font-weight: 600;
 }
 
 /* Theme colors, *especially* dropdown ones, don't always play nice */

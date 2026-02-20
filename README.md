@@ -21,7 +21,7 @@ This is primarily a personal project. I use it daily, I fix what annoys me, and 
 
 ### 🤖 Copilot Integration *(v2.4+)*
 
-The biggest addition. Seven custom [Language Model Tools](https://code.visualstudio.com/api/extension-guides/ai/tools) that make GitHub Copilot actually useful on remote SSH workspaces:
+The biggest addition. Eight custom [Language Model Tools](https://code.visualstudio.com/api/extension-guides/ai/tools) that make GitHub Copilot actually useful on remote SSH workspaces:
 
 | Tool | What it does |
 |---|---|
@@ -31,7 +31,8 @@ The biggest addition. Seven custom [Language Model Tools](https://code.visualstu
 | `sshfs_directory_tree` | Get full project tree structure |
 | `sshfs_search_text` | Grep through files (with single-file support) |
 | `sshfs_read_file` | Read file contents with line ranges (server-side, no SFTP download) |
-| `sshfs_edit_file` | Find-and-replace editing via SFTP with confirmation dialog |
+| `sshfs_edit_file` | Find-and-replace editing via SFTP — single edit, multi-edit (`edits[]`), or line insert (`insertAfterLine`) |
+| `sshfs_create_file` | Create new files on the remote server with inline diff preview |
 
 VS Code's built-in Copilot tools are designed for local/Remote SSH workspaces and don't support custom `ssh://` filesystem URIs. These tools bridge that gap — they execute directly on the remote server via SSH, so Copilot works just as well on SSH FS mounts as it does locally.
 
@@ -62,13 +63,22 @@ This makes SSH FS Plus a great setup for workflows like:
 | **TypeScript** | ~4.x | ~5.7 |
 | **Yarn** | 1.x | 4.6 (PnP) |
 | **VS Code engine** | ^1.49.0 | ^1.100.0 |
-| **ssh2** | 1.4 | 1.16 |
+| **ssh2** | 1.4 | 1.17 |
 | **Webpack** | 4 | 5 |
 | **Prettier** | 2 | 3 |
 
+### � QuickDiff Change Tracking *(v2.7+)*
+
+VS Code's built-in change tracking doesn't work with custom `ssh://` filesystem schemes. SSH FS Plus provides its own — gutter indicators, "M" badge in Explorer, Source Control panel with click-to-diff, navigate/accept/reject individual change blocks, and auto-scroll to AI-made changes.
+
+### 📡 Connection Management *(v2.7+)*
+
+- **Auto-reconnect with exponential backoff** — on disconnect, retries 3× (1s → 2s → 4s) before prompting
+- **Status bar indicator** — live SSH connection status (disconnected/connecting/connected with names), click to connect
+- **Import from `~/.ssh/config`** — parses OpenSSH config and lets you pick hosts to import (Host, HostName, User, Port, IdentityFile, ProxyJump)
+
 ### 🐛 Bug Fixes
 
-- **Auto-reconnect** — connections automatically re-establish after unexpected disconnects
 - **`replaceVariablesRecursive`** — fixed incorrect variable substitution
 - **`quickPickItemTooltip`** — removed proposed API crash
 - **`extensionKind: ["ui", "workspace"]`** — runs in the local UI host, keeping Copilot/MCP traffic local

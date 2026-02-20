@@ -50,11 +50,26 @@ interface SSHReadFileInput {
 
 /**
  * Input schema for the sshfs_edit_file language model tool.
+ * Supports three modes:
+ * 1. Single edit: { path, oldString, newString }
+ * 2. Multi-edit: { path, edits: [{oldString, newString}, ...] }
+ * 3. Insert: { path, insertAfterLine, newString } (oldString omitted or empty)
  */
 interface SSHEditFileInput {
     path: string;
-    oldString: string;
-    newString: string;
+    oldString?: string;
+    newString?: string;
+    edits?: { oldString: string; newString: string }[];
+    insertAfterLine?: number;
+    connectionName?: string;
+}
+
+/**
+ * Input schema for the sshfs_create_file language model tool.
+ */
+interface SSHCreateFileInput {
+    path: string;
+    content: string;
     connectionName?: string;
 }
 
@@ -109,7 +124,10 @@ async function execCommand(client: Client, command: string, token?: vscode.Cance
             const output = chunks.join('');
             finish(output || null);
         });
-        channel.stderr!.on('data', () => { /* ignore stderr */ });
+        channel.stderr!.on('data', (chunk: Buffer) => {
+            const msg = chunk.toString('utf-8').trim();
+            if (msg) Logging.debug`execCommand stderr: ${msg}`;
+        });
     });
 }
 
@@ -216,8 +234,8 @@ class SSHRunCommandTool implements vscode.LanguageModelTool<SSHRunCommandInput> 
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting.`
-                    : `No active SSH connections. Connect via SSH FS Plus first. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
 
@@ -328,8 +346,8 @@ class SSHFindFilesTool implements vscode.LanguageModelTool<SSHFindFilesInput> {
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -457,8 +475,8 @@ class SSHListDirectoryTool implements vscode.LanguageModelTool<SSHListDirectoryI
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -560,8 +578,8 @@ class SSHDirectoryTreeTool implements vscode.LanguageModelTool<SSHDirectoryTreeI
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -678,8 +696,8 @@ class SSHReadFileTool implements vscode.LanguageModelTool<SSHReadFileInput> {
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -699,13 +717,13 @@ class SSHReadFileTool implements vscode.LanguageModelTool<SSHReadFileInput> {
 
         // Validate line range
         if (startLine !== undefined && startLine < 1) {
-            throw new Error('startLine must be >= 1');
+            throw new Error('startLine must be >= 1. Use startLine=1 to read from the beginning of the file.');
         }
         if (endLine !== undefined && endLine < 1) {
-            throw new Error('endLine must be >= 1');
+            throw new Error('endLine must be >= 1. Omit endLine to read to the end of the file.');
         }
         if (startLine !== undefined && endLine !== undefined && endLine < startLine) {
-            throw new Error(`endLine (${endLine}) must be >= startLine (${startLine})`);
+            throw new Error(`endLine (${endLine}) must be >= startLine (${startLine}). Swap the values or omit endLine to read to the end.`);
         }
 
         // Cap maximum lines to prevent overwhelming LLM context
@@ -820,8 +838,8 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -831,14 +849,13 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
         options: vscode.LanguageModelToolInvocationOptions<SSHEditFileInput>,
         _token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
-        const { path: filePath, oldString, newString, connectionName } = options.input;
+        const { path: filePath, connectionName, insertAfterLine } = options.input;
         const conn = this.getConnection(connectionName);
 
         const root = conn.config.root || '/';
         // Build path relative to root for the ssh:// URI
         let relPath: string;
         if (filePath.startsWith('/')) {
-            // Absolute path — make relative to root if it starts with root
             if (filePath.startsWith(root)) {
                 relPath = filePath.substring(root.length).replace(/^\//, '');
             } else {
@@ -848,13 +865,10 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
             relPath = filePath;
         }
 
-        // Build ssh:// URI: ssh://connectionName/absolutePath
         const absPath = root.replace(/\/$/, '') + '/' + relPath;
         const uri = vscode.Uri.parse(`ssh://${conn.config.name}/${absPath.replace(/^\//, '')}`);
 
-        Logging.info`ChatTool sshfs_edit_file: editing ${absPath} via WorkspaceEdit (uri: ${uri.toString()})`;
-
-        // Open the file through VS Code's TextDocument API (uses SSH FS provider)
+        // Open the file
         let doc: vscode.TextDocument;
         try {
             doc = await vscode.workspace.openTextDocument(uri);
@@ -864,12 +878,7 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
             ]);
         }
 
-        const content = doc.getText();
-
-        // Normalize line endings in oldString/newString to match document
-        // VS Code TextDocument normalizes to \n, but Copilot may send \r\n or vice versa
-        const normalizedOld = oldString.replace(/\r\n/g, '\n');
-        const normalizedNew = newString.replace(/\r\n/g, '\n');
+        let content = doc.getText();
 
         // Size guard
         if (content.length > 2_000_000) {
@@ -877,6 +886,211 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
                 new vscode.LanguageModelTextPart(`Error: File ${absPath} is too large (${(content.length / 1_000_000).toFixed(1)} MB). Maximum supported size is 2 MB.`)
             ]);
         }
+
+        // --- Determine edit mode ---
+        // Mode 1: Insert after line
+        if (insertAfterLine !== undefined) {
+            const newString = (options.input.newString ?? '').replace(/\r\n/g, '\n');
+            if (!newString) {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`Error: newString is required for insert mode. Provide the text to insert in the newString parameter.`)
+                ]);
+            }
+            return this.applyInsert(doc, uri, absPath, relPath, insertAfterLine, newString);
+        }
+
+        // Mode 2: Multi-edit (edits array)
+        if (options.input.edits && options.input.edits.length > 0) {
+            return this.applyMultiEdit(doc, uri, absPath, relPath, options.input.edits);
+        }
+
+        // Mode 3: Single edit (classic oldString/newString)
+        const oldString = options.input.oldString ?? '';
+        const newString = options.input.newString ?? '';
+        if (!oldString) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: oldString is required for replace mode. Use insertAfterLine for insert mode, or edits[] for multi-edit.`)
+            ]);
+        }
+
+        Logging.info`ChatTool sshfs_edit_file: editing ${absPath} via WorkspaceEdit (uri: ${uri.toString()})`;
+        return this.applySingleEdit(doc, uri, absPath, relPath, oldString, newString);
+    }
+
+    /**
+     * Insert newString after a specific line number.
+     */
+    private async applyInsert(
+        doc: vscode.TextDocument, uri: vscode.Uri,
+        absPath: string, relPath: string,
+        afterLine: number, newString: string
+    ): Promise<vscode.LanguageModelToolResult> {
+        const totalLines = doc.lineCount;
+        if (afterLine < 0 || afterLine > totalLines) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: insertAfterLine ${afterLine} is out of range (file has ${totalLines} lines). Use 0 to insert at the beginning.`)
+            ]);
+        }
+
+        // Position: end of the specified line (or start of file for line 0)
+        const insertPos = afterLine === 0
+            ? new vscode.Position(0, 0)
+            : doc.lineAt(afterLine - 1).range.end;
+
+        const textToInsert = afterLine === 0 ? newString + '\n' : '\n' + newString;
+        const insertedLines = newString.split('\n').length;
+
+        Logging.info`ChatTool sshfs_edit_file: inserting ${insertedLines} line(s) after line ${afterLine} in ${relPath}`;
+
+        const chatStream = _activeChatStream;
+        if (chatStream && typeof chatStream.textEdit === 'function') {
+            chatStream.textEdit(uri, [new vscode.TextEdit(new vscode.Range(insertPos, insertPos), textToInsert)]);
+            chatStream.textEdit(uri, true);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Successfully proposed insertion of ${insertedLines} line(s) after line ${afterLine} in ${relPath}. The edit is shown as an inline diff.`)
+            ]);
+        }
+
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(uri, insertPos, textToInsert);
+        const success = await vscode.workspace.applyEdit(edit);
+        if (!success) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: VS Code rejected the insert for ${absPath}. Try re-reading the file with sshfs_read_file to verify its current state and retry.`)
+            ]);
+        }
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Successfully inserted ${insertedLines} line(s) after line ${afterLine} in ${relPath}. The file is modified but NOT yet saved.`)
+        ]);
+    }
+
+    /**
+     * Apply multiple edits to the same file in one pass.
+     * Edits are applied bottom-to-top to preserve line offsets.
+     */
+    private async applyMultiEdit(
+        doc: vscode.TextDocument, uri: vscode.Uri,
+        absPath: string, relPath: string,
+        edits: { oldString: string; newString: string }[]
+    ): Promise<vscode.LanguageModelToolResult> {
+        if (edits.length > 20) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: Too many edits (${edits.length}). Maximum is 20 per call. Split into multiple sshfs_edit_file calls with up to 20 edits each.`)
+            ]);
+        }
+
+        const content = doc.getText();
+        Logging.info`ChatTool sshfs_edit_file: multi-edit with ${edits.length} edits in ${relPath}`;
+
+        // Find all matches first (validate before applying any)
+        const matches: { index: number; matchedString: string; normalizedNew: string; editIdx: number }[] = [];
+
+        for (let i = 0; i < edits.length; i++) {
+            const { oldString, newString } = edits[i];
+            const normalizedOld = oldString.replace(/\r\n/g, '\n');
+            const normalizedNew = newString.replace(/\r\n/g, '\n');
+
+            let index = content.indexOf(oldString);
+            let matchedString = oldString;
+
+            if (index === -1 && normalizedOld !== oldString) {
+                index = content.indexOf(normalizedOld);
+                matchedString = normalizedOld;
+            }
+            if (index === -1) {
+                const flexResult = flexibleWhitespaceMatch(content, normalizedOld);
+                if (flexResult && !flexResult.ambiguous) {
+                    index = flexResult.start;
+                    matchedString = content.substring(flexResult.start, flexResult.end);
+                }
+            }
+
+            if (index === -1) {
+                // Try to provide a helpful hint about where the text might be
+                const firstLine = normalizedOld.split('\n')[0].trim();
+                let hint = '';
+                if (firstLine.length > 10) {
+                    const firstLineIdx = content.indexOf(firstLine);
+                    if (firstLineIdx !== -1) {
+                        const lineNum = content.substring(0, firstLineIdx).split('\n').length;
+                        const contextStart = Math.max(0, content.lastIndexOf('\n', Math.max(0, firstLineIdx - 1)) + 1);
+                        const contextEndNewline = content.indexOf('\n', firstLineIdx);
+                        const nextLine = contextEndNewline !== -1 ? content.indexOf('\n', contextEndNewline + 1) : -1;
+                        const contextEnd = nextLine !== -1 ? nextLine : content.length;
+                        const actualContext = content.substring(contextStart, contextEnd);
+                        hint = `\n\nPartial match at line ${lineNum}. Actual content:\n${actualContext}\n\nCheck for whitespace differences.`;
+                    }
+                }
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`Error: Edit ${i + 1}/${edits.length} — oldString not found in ${absPath}. No edits were applied. Use sshfs_read_file to re-read the file.${hint}`)
+                ]);
+            }
+
+            const secondIndex = content.indexOf(matchedString, index + 1);
+            if (secondIndex !== -1) {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`Error: Edit ${i + 1}/${edits.length} — oldString matches multiple locations in ${absPath}. No edits were applied. Add more context.`)
+                ]);
+            }
+
+            matches.push({ index, matchedString, normalizedNew, editIdx: i });
+        }
+
+        // Check for overlapping edits
+        const sorted = [...matches].sort((a, b) => a.index - b.index);
+        for (let i = 1; i < sorted.length; i++) {
+            const prev = sorted[i - 1];
+            if (prev.index + prev.matchedString.length > sorted[i].index) {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`Error: Edits ${prev.editIdx + 1} and ${sorted[i].editIdx + 1} overlap. No edits were applied.`)
+                ]);
+            }
+        }
+
+        // Build TextEdits (bottom-to-top for stable offsets)
+        const textEdits: vscode.TextEdit[] = sorted.reverse().map(m => {
+            const startPos = doc.positionAt(m.index);
+            const endPos = doc.positionAt(m.index + m.matchedString.length);
+            return new vscode.TextEdit(new vscode.Range(startPos, endPos), m.normalizedNew);
+        });
+
+        const chatStream = _activeChatStream;
+        if (chatStream && typeof chatStream.textEdit === 'function') {
+            chatStream.textEdit(uri, textEdits);
+            chatStream.textEdit(uri, true);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Successfully proposed ${edits.length} edits in ${relPath}. The changes are shown as inline diffs.`)
+            ]);
+        }
+
+        const wsEdit = new vscode.WorkspaceEdit();
+        for (const te of textEdits) {
+            wsEdit.replace(uri, te.range, te.newText);
+        }
+        const success = await vscode.workspace.applyEdit(wsEdit);
+        if (!success) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: VS Code rejected the multi-edit for ${absPath}. Try re-reading the file with sshfs_read_file and retrying with the correct content.`)
+            ]);
+        }
+
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Successfully applied ${edits.length} edits to ${relPath}. The file is modified but NOT yet saved.`)
+        ]);
+    }
+
+    /**
+     * Classic single find-and-replace edit.
+     */
+    private async applySingleEdit(
+        doc: vscode.TextDocument, uri: vscode.Uri,
+        absPath: string, relPath: string,
+        oldString: string, newString: string
+    ): Promise<vscode.LanguageModelToolResult> {
+        const content = doc.getText();
+
+        const normalizedOld = oldString.replace(/\r\n/g, '\n');
+        const normalizedNew = newString.replace(/\r\n/g, '\n');
 
         // --- Matching logic ---
         // 1. Try exact match
@@ -1001,7 +1215,7 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
 
         if (!success) {
             return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`Error: VS Code rejected the edit for ${absPath}. The file was NOT modified.`)
+                new vscode.LanguageModelTextPart(`Error: VS Code rejected the edit for ${absPath}. The file was NOT modified. Try re-reading the file with sshfs_read_file and retrying with the correct content.`)
             ]);
         }
 
@@ -1024,10 +1238,24 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
         _token: vscode.CancellationToken
     ): Promise<vscode.PreparedToolInvocation> {
         const filePath = options.input.path;
-        const oldStr = options.input.oldString;
-        const newStr = options.input.newString;
+        const { edits, insertAfterLine, oldString, newString } = options.input;
 
-        // Show a preview of the change (truncated)
+        if (insertAfterLine !== undefined) {
+            const lineCount = (newString ?? '').split('\n').length;
+            return {
+                invocationMessage: `Insert ${lineCount} line(s) after line ${insertAfterLine} in **${filePath}**`,
+            };
+        }
+
+        if (edits && edits.length > 0) {
+            return {
+                invocationMessage: `Apply ${edits.length} edits to **${filePath}** on SSH server`,
+            };
+        }
+
+        // Single edit
+        const oldStr = oldString ?? '';
+        const newStr = newString ?? '';
         const maxPreview = 300;
         const oldPreview = oldStr.length > maxPreview ? oldStr.substring(0, maxPreview) + '...' : oldStr;
         const newPreview = newStr.length > maxPreview ? newStr.substring(0, maxPreview) + '...' : newStr;
@@ -1038,6 +1266,133 @@ class SSHEditFileTool implements vscode.LanguageModelTool<SSHEditFileInput> {
                 title: 'SSH File Edit',
                 message: new vscode.MarkdownString(
                     `Edit **${filePath}**\n\nReplace:\n\`\`\`\n${oldPreview}\n\`\`\`\n\nWith:\n\`\`\`\n${newPreview}\n\`\`\``
+                )
+            },
+        };
+    }
+}
+
+/**
+ * Language Model Tool — creates a new file on a remote SSH server.
+ * Opens the file through VS Code's TextDocument API (using the SSH FS provider),
+ * writes the content via WorkspaceEdit, and leaves it in a dirty (unsaved) state
+ * so the user can review and save manually. Supports chat participant inline diffs.
+ */
+class SSHCreateFileTool implements vscode.LanguageModelTool<SSHCreateFileInput> {
+    constructor(private readonly connectionManager: ConnectionManager) {}
+
+    private getConnection(connectionName?: string) {
+        const conn = connectionName
+            ? this.connectionManager.getActiveConnection(connectionName)
+            : this.connectionManager.getActiveConnections()[0];
+        if (!conn) {
+            const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
+            throw new Error(
+                connectionName
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
+            );
+        }
+        return conn;
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<SSHCreateFileInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { path: filePath, content, connectionName } = options.input;
+        const conn = this.getConnection(connectionName);
+
+        const root = conn.config.root || '/';
+        // Build absolute path
+        const absPath = filePath.startsWith('/')
+            ? filePath
+            : root.replace(/\/$/, '') + '/' + filePath;
+
+        // Build ssh:// URI
+        const uri = vscode.Uri.parse(`ssh://${conn.config.name}/${absPath.replace(/^\//, '')}`);
+
+        Logging.info`ChatTool sshfs_create_file: creating ${absPath} (${content.length} chars)`;
+
+        // Check if file already exists
+        try {
+            await vscode.workspace.fs.stat(uri);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: File already exists at ${absPath}. Use sshfs_edit_file to modify existing files, or choose a different path.`)
+            ]);
+        } catch {
+            // File doesn't exist — good, we can create it
+        }
+
+        // Size guard
+        if (content.length > 2_000_000) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: Content too large (${(content.length / 1_000_000).toFixed(1)} MB). Maximum supported size is 2 MB.`)
+            ]);
+        }
+
+        // Normalize line endings
+        const normalizedContent = content.replace(/\r\n/g, '\n');
+
+        const relPath = absPath.startsWith(root)
+            ? absPath.substring(root.length).replace(/^\//, '')
+            : absPath;
+        const lineCount = normalizedContent.split('\n').length;
+
+        // If we're in chat participant context, propose via textEdit (inline green diff)
+        const chatStream = _activeChatStream;
+        if (chatStream && typeof chatStream.textEdit === 'function') {
+            // Create the file first (empty) so the URI is valid for textEdit
+            await vscode.workspace.fs.writeFile(uri, Buffer.of());
+            const doc = await vscode.workspace.openTextDocument(uri);
+            const range = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
+            chatStream.textEdit(uri, [new vscode.TextEdit(range, normalizedContent)]);
+            chatStream.textEdit(uri, true);
+
+            Logging.info`ChatTool sshfs_create_file: proposed ${lineCount} line(s) via textEdit for ${relPath}`;
+
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(
+                    `Successfully proposed new file ${relPath} (${lineCount} lines). The edit is shown as an inline diff in the chat. The user can accept or reject the changes.`
+                )
+            ]);
+        }
+
+        // Normal agent mode: create via WorkspaceEdit
+        const edit = new vscode.WorkspaceEdit();
+        edit.createFile(uri, { overwrite: false, ignoreIfExists: false });
+        edit.insert(uri, new vscode.Position(0, 0), normalizedContent);
+
+        const success = await vscode.workspace.applyEdit(edit);
+        if (!success) {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(`Error: VS Code rejected the file creation for ${absPath}. The directory may not exist — try creating it first with sshfs_run_command, or check the path is correct.`)
+            ]);
+        }
+
+        Logging.info`ChatTool sshfs_create_file: created ${relPath} with ${lineCount} line(s)`;
+
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(
+                `Successfully created ${relPath} with ${lineCount} line(s). The file is modified but NOT yet saved. The user can review and save with Ctrl+S, or undo with Ctrl+Z.`
+            )
+        ]);
+    }
+
+    async prepareInvocation(
+        options: vscode.LanguageModelToolInvocationPrepareOptions<SSHCreateFileInput>,
+        _token: vscode.CancellationToken
+    ): Promise<vscode.PreparedToolInvocation> {
+        const filePath = options.input.path;
+        const contentLen = options.input.content.length;
+        const lineCount = options.input.content.split('\n').length;
+
+        return {
+            invocationMessage: `Create **${filePath}** on SSH server (${lineCount} lines)`,
+            confirmationMessages: {
+                title: 'SSH Create File',
+                message: new vscode.MarkdownString(
+                    `Create new file **${filePath}** (${lineCount} lines, ${contentLen} chars)`
                 )
             },
         };
@@ -1059,8 +1414,8 @@ class SSHSearchTextTool implements vscode.LanguageModelTool<SSHSearchTextInput> 
             const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
             throw new Error(
                 connectionName
-                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
-                    : `No active SSH connections. Available: ${available.join(', ') || 'none'}`
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}. Try reconnecting or use a different connectionName.`
+                    : `No active SSH connections. Tell the user to connect via SSH FS Plus first. Available connections: ${available.join(', ') || 'none'}`
             );
         }
         return conn;
@@ -1089,7 +1444,12 @@ class SSHSearchTextTool implements vscode.LanguageModelTool<SSHSearchTextInput> 
             grepFlags.push('-r'); // recursive only for directory searches
         }
         if (!caseSensitive) grepFlags.push('-i');
-        if (isRegex) {
+
+        // Auto-detect regex metacharacters: if the query contains | ( ) [ ] { } + ? ^ $
+        // but isRegex wasn't explicitly set, auto-enable extended regex mode.
+        // This prevents wasted round-trips when Copilot sends alternation patterns like "word1|word2".
+        const useRegex = isRegex || /[|()[\]{}+?^$]/.test(query);
+        if (useRegex) {
             grepFlags.push('-E');
         } else {
             grepFlags.push('-F');
@@ -1118,8 +1478,9 @@ class SSHSearchTextTool implements vscode.LanguageModelTool<SSHSearchTextInput> 
         const output = await execCommand(conn.client, cmd, token, 20_000);
 
         if (!output || !output.trim()) {
+            Logging.info`ChatTool sshfs_search_text: 0 matches`;
             return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`No matches found for "${query}" in ${searchPath}`)
+                new vscode.LanguageModelTextPart(`No matches found for "${query}" in ${searchPath}. Try a different search query, broader pattern, or check if the path is correct.`)
             ]);
         }
 
@@ -1214,6 +1575,13 @@ export function registerChatTools(
         Logging.info`Registered Language Model Tool: sshfs_edit_file — Copilot file editing via SFTP`;
     } catch (e) {
         Logging.warning`Failed to register sshfs_edit_file: ${e}`;
+    }
+
+    try {
+        subscribe(vscode.lm.registerTool('sshfs_create_file', new SSHCreateFileTool(connectionManager)));
+        Logging.info`Registered Language Model Tool: sshfs_create_file — Copilot file creation via SFTP`;
+    } catch (e) {
+        Logging.warning`Failed to register sshfs_create_file: ${e}`;
     }
 
     try {

@@ -1,35 +1,54 @@
 div.Field {
-    padding: 20px 9px 3px 9px;
+    padding: 16px 12px 12px 12px;
+    margin: 8px 0;
+    border-radius: 4px;
+    border-left: 3px solid transparent;
+    transition: background-color 0.15s ease;
+}
+
+div.Field:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+div.Field.required {
+    border-left-color: var(--vscode-focusBorder, #007fd4);
 }
 
 div.Field > div.label {
     display: inline-block;
-    font-size: 110%;
+    font-size: 13px;
     font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 div.Field > div.optional {
     display: inline-block;
-    padding-left: 10px;
-    opacity: 0.75;
+    padding-left: 8px;
+    opacity: 0.5;
+    font-size: 11px;
+    font-style: italic;
 }
 
 div.Field > div.description {
-    margin-top: 3px;
-    opacity: 0.75;
+    margin-top: 4px;
+    opacity: 0.65;
+    font-size: 12px;
+    line-height: 1.4;
 }
 div.Field > div.error {
     color: var(--vscode-errorForeground);
     margin: 5px 0 -5px 0;
+    font-size: 12px;
 }
 
 div.Field p.warning {
     color: var(--vscode-editorWarning-foreground);
     margin: 5px 0 -5px 0;
+    font-size: 12px;
 }
 
 div.Field > div.value {
-    margin-top: 9px;
+    margin-top: 6px;
     min-width: 200px;
     max-width: 500px;
 }
@@ -40,14 +59,28 @@ div.Field input {
     border: 1px solid var(--vscode-settings-textInputBorder);
     height: 100%;
     width: 100%;
-    padding: 3px;
+    padding: 6px 8px;
     box-sizing: border-box;
+    border-radius: 3px;
+    font-size: 13px;
+    transition: border-color 0.15s ease;
+}
+
+div.Field input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+div.Field input::placeholder {
+    opacity: 0.4;
+    font-style: italic;
 }
 
 div.FieldDropdown {
     background: var(--vscode-settings-dropdownBackground);
     color: var(--vscode-settings-dropdownForeground);
     border: 1px solid var(--vscode-settings-dropdownBorder);
+    border-radius: 3px;
     position: relative;
     cursor: pointer;
 }
@@ -56,6 +89,7 @@ div.FieldDropdown > ul.list {
     background: var(--vscode-settings-dropdownBackground);
     color: var(--vscode-settings-dropdownForeground);
     border: 1px solid var(--vscode-settings-dropdownBorder);
+    border-radius: 0 0 3px 3px;
     z-index: 1000;
     position: absolute;
     width: 100%;
@@ -64,16 +98,20 @@ div.FieldDropdown > ul.list {
     padding: 0;
     margin: 0;
     box-sizing: border-box;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 div.FieldDropdown > .current,
 div.FieldDropdown ul.list > li {
     height: 1em;
-    padding: 5px;
+    padding: 6px 8px;
     list-style: none;
 }
 div.FieldDropdown ul.list > li {
     border-top: 1px solid var(--vscode-settings-dropdownListBorder);
+}
+div.FieldDropdown ul.list > li:hover {
+    background: var(--vscode-list-hoverBackground);
 }
 
 div.FieldDropdown > div.close {
@@ -88,18 +126,27 @@ div.FieldDropdownWithInput {
     position: relative;
     background: none;
     height: 1em;
-    padding: 5px;
+    padding: 6px 8px;
 }
 div.FieldDropdownWithInput > input.current {
     position: absolute;
     background: var(--vscode-settings-textInputBackground);
     color: var(--vscode-settings-textInputForeground);
     border: none;
-    padding: 5px;
+    padding: 6px 8px;
     box-sizing: border-box;
     height: 100%;
     top: 0;
     left: 0;
+    border-radius: 3px;
+    font-size: 13px;
+}
+div.FieldDropdownWithInput > input.current:focus {
+    outline: none;
+}
+div.FieldDropdownWithInput > input.current::placeholder {
+    opacity: 0.4;
+    font-style: italic;
 }
 div.FieldDropdownWithInput ul.list {
     top: 100%;

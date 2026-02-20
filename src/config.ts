@@ -366,7 +366,7 @@ export async function alterConfigs(location: ConfigLocation, alterer: ConfigAlte
   }
   switch (location) {
     case vscode.ConfigurationTarget.WorkspaceFolder:
-      throw new Error(`Trying to update WorkspaceFolder settings with WorkspaceFolder Uri`);
+      if (!uri) throw new Error(`Trying to update WorkspaceFolder settings without a WorkspaceFolder Uri`);
     case vscode.ConfigurationTarget.Global:
       prettyLocation ||= 'Global';
     case vscode.ConfigurationTarget.Workspace:
@@ -374,15 +374,16 @@ export async function alterConfigs(location: ConfigLocation, alterer: ConfigAlte
       const conf = vscode.workspace.getConfiguration('sshfs', uri);
       const inspect = conf.inspect<FileSystemConfig[]>('configs')!;
       // If the array doesn't exist, create a new empty one
-      const array = inspect[[, 'globalValue', 'workspaceValue', 'workspaceFolderValue'][location]!] || [];
+      const inspectKey = [, 'globalValue', 'workspaceValue', 'workspaceFolderValue'][location] as keyof typeof inspect;
+      const array = (inspectKey && inspect[inspectKey] as FileSystemConfig[] | undefined) || [];
       let modified = alterer(array);
       if (!modified) return;
       modified = modified.map((config) => {
-        const newConfig = { ...config };
+        const newConfig = { ...config } as Record<string, any>;
         for (const key in config) {
           if (key[0] === '_') delete newConfig[key];
         }
-        return newConfig;
+        return newConfig as FileSystemConfig;
       });
       await conf.update('configs', modified, location);
       logging.debug`\tUpdated configs in ${prettyLocation} Settings`;
@@ -398,11 +399,11 @@ export async function alterConfigs(location: ConfigLocation, alterer: ConfigAlte
   let altered = alterer(configs);
   if (!altered) return;
   altered = altered.map((config) => {
-    const newConfig = { ...config };
+    const newConfig = { ...config } as Record<string, any>;
     for (const key in config) {
       if (key[0] === '_') delete newConfig[key];
     }
-    return newConfig;
+    return newConfig as FileSystemConfig;
   });
   const data = Buffer.from(JSON.stringify(altered, null, 4));
   try { await fs.writeFile(uri, data); } catch (e) {

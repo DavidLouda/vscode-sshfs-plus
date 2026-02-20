@@ -1,9 +1,9 @@
 {
     "name": "vscode-sshfs-plus",
     "displayName": "SSH FS Plus",
-    "description": "SSH workspace with full GitHub Copilot & AI support — file system, terminals, tasks, and 7 language model tools for remote development over SSH",
+    "description": "SSH workspace with full GitHub Copilot & AI support — file system, terminals, tasks, and 8 language model tools for remote development over SSH",
     "publisher": "DavidLouda",
-    "version": "2.6.3",
+    "version": "2.7.2",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -135,6 +135,12 @@
                 "icon": "$(settings)"
             },
             {
+                "command": "sshfs.importSSHConfig",
+                "title": "Import from SSH config (~/.ssh/config)",
+                "category": "SSH FS",
+                "icon": "$(cloud-download)"
+            },
+            {
                 "command": "sshfs.refresh",
                 "title": "Refresh",
                 "category": "SSH FS",
@@ -151,6 +157,54 @@
                 "title": "Close terminal",
                 "category": "SSH FS",
                 "icon": "$(close)"
+            },
+            {
+                "command": "sshfs.resetDiff",
+                "title": "Reset file change indicators",
+                "category": "SSH FS",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "sshfs.resetAllDiff",
+                "title": "Reset all change indicators",
+                "category": "SSH FS",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "sshfs.keepChange",
+                "title": "Accept all changes in file",
+                "category": "SSH FS",
+                "icon": "$(check-all)"
+            },
+            {
+                "command": "sshfs.undoChange",
+                "title": "Reject change at cursor",
+                "category": "SSH FS",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "sshfs.acceptChange",
+                "title": "Accept change at cursor",
+                "category": "SSH FS",
+                "icon": "$(check)"
+            },
+            {
+                "command": "sshfs.rejectChange",
+                "title": "Reject change at cursor",
+                "category": "SSH FS",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "sshfs.nextChange",
+                "title": "Next change",
+                "category": "SSH FS",
+                "icon": "$(arrow-down)"
+            },
+            {
+                "command": "sshfs.prevChange",
+                "title": "Previous change",
+                "category": "SSH FS",
+                "icon": "$(arrow-up)"
             }
         ],
         "menus": {
@@ -198,6 +252,71 @@
                 {
                     "command": "sshfs.refresh",
                     "when": "false"
+                },
+                {
+                    "command": "sshfs.resetDiff",
+                    "group": "SSH FS@9",
+                    "when": "resourceScheme == ssh"
+                },
+                {
+                    "command": "sshfs.resetAllDiff",
+                    "group": "SSH FS@10",
+                    "when": "resourceScheme == ssh"
+                },
+                {
+                    "command": "sshfs.keepChange",
+                    "when": "false"
+                },
+                {
+                    "command": "sshfs.undoChange",
+                    "when": "false"
+                },
+                {
+                    "command": "sshfs.acceptChange",
+                    "when": "false"
+                },
+                {
+                    "command": "sshfs.rejectChange",
+                    "when": "false"
+                },
+                {
+                    "command": "sshfs.nextChange",
+                    "group": "SSH FS@11",
+                    "when": "resourceScheme == ssh && sshfs:hasChanges"
+                },
+                {
+                    "command": "sshfs.prevChange",
+                    "group": "SSH FS@12",
+                    "when": "resourceScheme == ssh && sshfs:hasChanges"
+                }
+            ],
+            "editor/title": [
+                {
+                    "command": "sshfs.prevChange",
+                    "when": "resourceScheme == ssh && sshfs:hasChanges",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "sshfs.nextChange",
+                    "when": "resourceScheme == ssh && sshfs:hasChanges",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "sshfs.resetDiff",
+                    "when": "resourceScheme == ssh && sshfs:hasChanges",
+                    "group": "navigation@3"
+                }
+            ],
+            "editor/context": [
+                {
+                    "command": "sshfs.acceptChange",
+                    "when": "resourceScheme == ssh && sshfs:cursorOnChange",
+                    "group": "sshfs@1"
+                },
+                {
+                    "command": "sshfs.rejectChange",
+                    "when": "resourceScheme == ssh && sshfs:cursorOnChange",
+                    "group": "sshfs@2"
                 }
             ],
             "view/title": [
@@ -210,6 +329,11 @@
                     "command": "sshfs.new",
                     "when": "view == 'sshfs-configs'",
                     "group": "navigation@2"
+                },
+                {
+                    "command": "sshfs.importSSHConfig",
+                    "when": "view == 'sshfs-configs'",
+                    "group": "navigation@3"
                 },
                 {
                     "command": "sshfs.add",
@@ -312,15 +436,7 @@
                     "markdownDescription": "Use the Settings UI to edit configurations *(run command `SSH FS: Open settings and edit configurations`)*",
                     "type": "array",
                     "items": "object",
-                    "default": [
-                        {
-                            "root": "/tmp",
-                            "host": "localhost",
-                            "port": 22,
-                            "username": "root",
-                            "password": "CorrectHorseBatteryStaple"
-                        }
-                    ]
+                    "default": []
                 },
                 "sshfs.flags": {
                     "title": "List of special flags to enable/disable certain fixes/features",
@@ -382,14 +498,28 @@
                 "name": "sshfs",
                 "fullName": "SSH FS Plus",
                 "description": "Work with SSH remote files using Copilot",
-                "isSticky": false
+                "isSticky": false,
+                "disambiguation": [
+                    {
+                        "category": "ssh_remote",
+                        "description": "The user wants to read, edit, search, or browse files on an SSH-connected remote server using dedicated file tools (find files, search text, read/edit files, list directories).",
+                        "examples": [
+                            "Read the config file on my remote server",
+                            "Find all .log files on the SSH server",
+                            "Edit the nginx config on my server",
+                            "Search for TODO comments in the remote project",
+                            "List files in /var/log on the SSH host",
+                            "Show the project directory tree on the remote server"
+                        ]
+                    }
+                ]
             }
         ],
         "languageModelTools": [
             {
                 "name": "sshfs_run_command",
                 "displayName": "SSH Run Command",
-                "modelDescription": "IMPORTANT: This tool is only shown when an SSH remote connection is active via SSH FS Plus. It executes a shell command directly on the remote SSH server and returns stdout+stderr. The workspace filesystem is remote (SSH/SFTP), so standard VS Code tools are slow. Use this for: checking file metadata (stat/wc), running build/test commands, git operations, managing services, and other general shell tasks. For READING FILE CONTENTS, prefer sshfs_read_file (faster, adds line numbers). For EDITING FILES, prefer sshfs_edit_file (safer, exact string replacement via SFTP). For file search by name, prefer sshfs_find_files. For directory listing, prefer sshfs_list_directory. For text search, prefer sshfs_search_text. For project structure, prefer sshfs_directory_tree.",
+                "modelDescription": "Execute a shell command on the remote SSH server. Use for: build/test, git, services, file metadata (stat/wc), and other general tasks. DO NOT use for: text search (use sshfs_search_text), file reading (use sshfs_read_file), file editing (use sshfs_edit_file), file search (use sshfs_find_files).",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshCommand",
                 "icon": "$(terminal)",
@@ -415,7 +545,7 @@
             {
                 "name": "sshfs_find_files",
                 "displayName": "SSH Find Files",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in file_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP. You MUST use this tool instead of file_search for ALL name-based searches — it finds BOTH files AND folders/directories. Runs `find` directly on the remote Linux server — returns results instantly. Accepts: file names ('style.css'), folder names ('ThemeOffice'), glob patterns ('*.php', 'config*'), partial names. Returns paths relative to workspace root. Use this whenever asked to find, locate, or search for a file or folder by name. To see what is inside a specific directory, use sshfs_list_directory. For project structure overview, use sshfs_directory_tree. For searching text INSIDE files, use sshfs_search_text.",
+                "modelDescription": "USE INSTEAD OF file_search (built-in fails on SSH). Finds files/dirs by name or glob via server-side 'find'. Input: pattern (name or glob like '*.php'), optional path. Returns relative paths.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshFindFiles",
                 "icon": "$(search)",
@@ -445,7 +575,7 @@
             {
                 "name": "sshfs_list_directory",
                 "displayName": "SSH List Directory",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in list_dir tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP. You MUST use this tool instead of list_dir to see what is inside a specific directory (like 'ls'). Shows files and subdirectories of the given path with type indicators (/ suffix for directories). Use this ONLY to browse contents of a known directory. To FIND files or folders by name, use sshfs_find_files instead. For project structure overview, use sshfs_directory_tree.",
+                "modelDescription": "USE INSTEAD OF list_dir (built-in fails on SSH). Lists directory contents with type indicators.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshListDir",
                 "icon": "$(folder)",
@@ -468,7 +598,7 @@
             {
                 "name": "sshfs_search_text",
                 "displayName": "SSH Search Text",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in grep_search tool WILL FAIL (timeout) on this workspace because the filesystem is remote SSH/SFTP — it tries to download every file over the network. You MUST use this tool instead of grep_search for ALL text searches. Runs `grep` directly on the remote Linux server — returns results instantly. Works on BOTH directories (recursive search) AND single files. Returns matching lines with file paths and line numbers. Supports fixed strings and regex (use isRegex=true with | for alternation, e.g. 'pattern1|pattern2|pattern3'), case-sensitive/insensitive, and file type filtering ('*.php,*.css'). When you know the exact file, pass its path directly — no need to use sshfs_run_command with grep. For finding files by name, use sshfs_find_files. For listing directories, use sshfs_list_directory. For reading file contents, use sshfs_read_file. For project structure overview, use sshfs_directory_tree.",
+                "modelDescription": "USE INSTEAD OF grep_search (built-in fails on SSH). Searches text in files via server-side grep. Recursive on directories, works on single files. Returns matches with paths and line numbers. Regex auto-detected (| works without isRegex). Use BEFORE sshfs_read_file to locate lines in large files.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshSearchText",
                 "icon": "$(search)",
@@ -510,7 +640,7 @@
             {
                 "name": "sshfs_directory_tree",
                 "displayName": "SSH Directory Tree",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. Use this tool to get a full hierarchical directory tree of the remote project (or a subdirectory). Returns an indented tree showing all files and folders up to a configurable depth — equivalent to the 'tree' command. This replaces hundreds of slow recursive SFTP readdir calls with a single fast server-side command. Use this FIRST when you need to understand the project structure, explore the codebase layout, or find where things are located. For listing a single directory's contents, use sshfs_list_directory. For finding specific files by name, use sshfs_find_files.",
+                "modelDescription": "Get hierarchical directory tree of the remote project (like 'tree' command). Use to understand project structure. Configurable depth (1-8, default 3). Use sshfs_list_directory for single directory, sshfs_find_files to search by name.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshTree",
                 "icon": "$(list-tree)",
@@ -537,7 +667,7 @@
             {
                 "name": "sshfs_read_file",
                 "displayName": "SSH Read File",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in read_file tool WILL BE EXTREMELY SLOW on this workspace because the filesystem is remote SSH/SFTP — it downloads the entire file over the network. You MUST use this tool instead of read_file for ALL file reading operations. Reads file contents directly on the remote Linux server using sed/cat — returns results instantly with line numbers. Supports reading specific line ranges (startLine/endLine) or entire files. Returns up to 500 lines per call. Use this whenever you need to read, view, inspect, or examine file contents. For finding files by name, use sshfs_find_files. For searching text inside files, use sshfs_search_text.",
+                "modelDescription": "USE INSTEAD OF read_file (built-in is slow on SSH). Reads file with line numbers via server-side sed. Supports startLine/endLine ranges. For large files: use sshfs_search_text first to find line numbers, then read only that range.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshReadFile",
                 "icon": "$(file)",
@@ -571,11 +701,11 @@
             {
                 "name": "sshfs_edit_file",
                 "displayName": "SSH Edit File",
-                "modelDescription": "CRITICAL: This tool is only shown when an SSH remote connection is active. The built-in replace_string_in_file tool CANNOT edit files on this workspace because the filesystem uses ssh:// URIs which VS Code blocks as 'outside workspace'. You MUST use this tool instead of replace_string_in_file for ALL file edits on SSH servers. Takes a file path, the exact text to find (oldString), and the replacement text (newString). The oldString must uniquely match exactly one location in the file — include 3-5 lines of surrounding context to ensure uniqueness. Reads the file via SFTP, performs the replacement, and writes it back atomically. For reading file contents first, use sshfs_read_file. For searching text, use sshfs_search_text.",
+                "modelDescription": "USE INSTEAD OF replace_string_in_file (built-in fails on ssh:// URIs). Modes: (1) oldString + newString, (2) edits[] array (up to 20 pairs), (3) insertAfterLine + newString. Read relevant section with sshfs_read_file first.",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshEditFile",
                 "icon": "$(edit)",
-                "userDescription": "Edit a file on the remote SSH server (find and replace text)",
+                "userDescription": "Edit a file on the remote SSH server (find-replace, multi-edit, or insert)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -585,11 +715,63 @@
                         },
                         "oldString": {
                             "type": "string",
-                            "description": "The exact text to find and replace. Must match exactly one location in the file. Include 3-5 lines of context before and after the target text to ensure uniqueness."
+                            "description": "The exact text to find and replace (single-edit mode). Must match exactly one location in the file. Include 3-5 lines of context to ensure uniqueness. Not needed when using edits[] or insertAfterLine."
                         },
                         "newString": {
                             "type": "string",
-                            "description": "The replacement text. This will replace the oldString exactly."
+                            "description": "The replacement text (single-edit or insert mode). For insert mode, this is the text to insert after the specified line."
+                        },
+                        "edits": {
+                            "type": "array",
+                            "description": "Multi-edit mode: array of edits to apply atomically to the same file. More efficient than multiple tool calls. Maximum 20 edits per call.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "oldString": {
+                                        "type": "string",
+                                        "description": "The exact text to find and replace."
+                                    },
+                                    "newString": {
+                                        "type": "string",
+                                        "description": "The replacement text."
+                                    }
+                                },
+                                "required": ["oldString", "newString"]
+                            }
+                        },
+                        "insertAfterLine": {
+                            "type": "number",
+                            "description": "Insert mode: 1-based line number to insert newString after. Use 0 to insert at the beginning of the file. When set, oldString is not needed."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": [
+                        "path"
+                    ]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_create_file",
+                "displayName": "SSH Create File",
+                "modelDescription": "USE INSTEAD OF create_file (built-in fails on ssh:// URIs). Creates new file with given content. Fails if file already exists.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshCreateFile",
+                "icon": "$(new-file)",
+                "userDescription": "Create a new file on the remote SSH server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to create (relative to workspace root, or absolute). Examples: 'src/utils/helpers.ts', 'config/settings.json'"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The full content to write to the new file."
                         },
                         "connectionName": {
                             "type": "string",
@@ -598,8 +780,7 @@
                     },
                     "required": [
                         "path",
-                        "oldString",
-                        "newString"
+                        "content"
                     ]
                 },
                 "when": "sshfs.openConnections > 0"

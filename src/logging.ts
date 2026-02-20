@@ -86,7 +86,7 @@ class Logger {
       this.stack = stack || '<stack unavailable>';
     }
   }
-  protected doPrint(type: string, message: string, options: LoggingOptions) {
+  protected doPrint(type: string, message: string, options: LoggingOptions): void {
     const { reportedFromLevel } = options;
     // Calculate prefix
     const prefix = this.name ? `[${this.name}] ` : '';
@@ -109,7 +109,7 @@ class Logger {
     OUTPUT_CHANNEL.appendLine(msg);
     // VS Code issue where console.debug logs twice in the Debug Console
     if (type.toLowerCase() === 'debug') type = 'log';
-    if (DEBUG) (console[type.toLowerCase()] || console.log).call(console, msg);
+    if (DEBUG) (console[type.toLowerCase() as keyof Console] as Function || console.log).call(console, msg);
   }
   protected formatValue(value: any, options: LoggingOptions): string {
     if (typeof value === 'string') return value;
@@ -119,7 +119,7 @@ class Logger {
       try {
         const json = JSON.stringify(value);
         if (json !== '{}') result += `\nJSON: ${json}`;
-      } finally { }
+      } catch { }
       const { maxErrorStack } = options;
       if (value.stack && maxErrorStack) {
         let { stack } = value;
@@ -144,9 +144,9 @@ class Logger {
       const short = JSON.stringify(value);
       if (short.length < 100) return short;
       return JSON.stringify(value, null, 4);
-    } catch (e) {
-      try { return `${value}`; } catch (e) {
-        return `[Error formatting value: ${e.message || e}]`;
+    } catch (e: any) {
+      try { return `${value}`; } catch (e2: any) {
+        return `[Error formatting value: ${e2.message || e2}]`;
       }
     }
   }

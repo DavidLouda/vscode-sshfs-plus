@@ -3,20 +3,23 @@ import type { ConnectionManager } from './connection';
 import { Logging } from './logging';
 import { setActiveChatStream } from './chatTools';
 
-const SYSTEM_PROMPT = `You are an SSH assistant for the SSH FS Plus VS Code extension. You help users work with remote files and servers connected via SSH.
+const SYSTEM_PROMPT = `You are an SSH assistant. The workspace is remote (SSH/SFTP). Use ONLY sshfs_* tools — built-in VS Code tools fail on this workspace.
 
-You have access to powerful tools for interacting with the remote SSH server:
-- sshfs_run_command: Execute shell commands on the remote server
-- sshfs_find_files: Find files and folders by name or pattern
-- sshfs_list_directory: List directory contents
-- sshfs_directory_tree: Get a hierarchical directory tree
-- sshfs_read_file: Read file contents with line numbers
-- sshfs_edit_file: Edit files using find-and-replace
-- sshfs_search_text: Search for text patterns in files using grep
+Tools:
+- sshfs_search_text: grep text in files. Use BEFORE reading large files to find relevant lines.
+- sshfs_read_file: read file with line numbers. Use startLine/endLine for specific ranges.
+- sshfs_edit_file: edit file. Modes: (1) oldString+newString, (2) edits[] array, (3) insertAfterLine+newString.
+- sshfs_create_file: create new file (fails if exists).
+- sshfs_find_files: find files/dirs by name or glob.
+- sshfs_list_directory: list directory contents.
+- sshfs_directory_tree: project structure tree.
+- sshfs_run_command: execute shell commands. NOT for grep/search/read/edit — use dedicated tools above.
 
-When editing files, always read the file first to understand its current content, then make precise edits with enough context to ensure unique matches. Describe what changes you are making and why.
-
-The workspace filesystem is remote (SSH/SFTP). Always use the sshfs_* tools — standard VS Code tools will fail or be extremely slow on this workspace.`;
+Rules:
+1. For large files: sshfs_search_text first → get line numbers → sshfs_read_file with startLine/endLine. Never read entire files sequentially.
+2. Before editing: read the relevant section first.
+3. Multiple edits in one file: use edits[] array in single sshfs_edit_file call.
+4. Never use sshfs_run_command for grep — always sshfs_search_text.`;
 
 /**
  * Registers a Chat Participant `@sshfs` that provides an interactive chat
@@ -39,12 +42,20 @@ export function registerChatParticipant(
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> => {
-        const model = request.model;
+        // o1/o3 models don't support tool calling — fall back to gpt-4o
+        let model = request.model;
+        if (model.vendor === 'copilot' && (model.family.startsWith('o1') || model.family.startsWith('o3'))) {
+            const fallbackModels = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
+            if (fallbackModels.length > 0) {
+                Logging.info`ChatParticipant: ${model.family} does not support tools, falling back to gpt-4o`;
+                model = fallbackModels[0];
+            }
+        }
 
         // Gather our SSH tools
-        const tools = vscode.lm.tools.filter(t => t.name.startsWith('sshfs_'));
+        const allTools = vscode.lm.tools.filter(t => t.name.startsWith('sshfs_'));
 
-        if (tools.length === 0) {
+        if (allTools.length === 0) {
             stream.markdown('No SSH FS tools available. Make sure you have an active SSH connection.');
             return {};
         }
@@ -72,25 +83,36 @@ export function registerChatParticipant(
         // Add current user request
         messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
 
+        // Handle explicit tool references (#sshCommand, #sshReadFile, etc.)
+        // When user references a tool with #, force the model to call it
+        const toolReferences = [...(request.toolReferences ?? [])];
+
         // Prepare tool definitions for the LLM
         const options: vscode.LanguageModelChatRequestOptions = {
-            tools: tools.map(t => ({
+            justification: 'To assist with SSH remote file operations via @sshfs',
+            tools: allTools.map(t => ({
                 name: t.name,
                 description: t.description,
                 inputSchema: t.inputSchema as Record<string, unknown>,
             })),
         };
 
+        // Track tool call metadata for prompt history on future requests
+        const toolCallRounds: { response: string; toolCalls: vscode.LanguageModelToolCallPart[] }[] = [];
+        const toolCallResults: Record<string, vscode.LanguageModelToolResult> = {};
+
         // Set the active chat stream so SSHEditFileTool can use textEdit()
         setActiveChatStream(stream);
 
         try {
-            await runToolLoop(model, messages, options, request, stream, token);
+            await runToolLoop(model, messages, options, allTools, toolReferences, request, stream, token, toolCallRounds, toolCallResults);
         } finally {
             setActiveChatStream(undefined);
         }
 
-        return {};
+        return {
+            metadata: { toolCallsMetadata: { toolCallRounds, toolCallResults } },
+        };
     };
 
     try {
@@ -107,18 +129,45 @@ export function registerChatParticipant(
  * Runs the LLM tool-calling loop: sends messages to the model, processes
  * tool calls, invokes tools, and streams the response back to the chat.
  * Loops until the model stops requesting tool calls or MAX_ROUNDS is reached.
+ * 
+ * Supports explicit tool references: when user uses #toolName, that tool
+ * is called with toolMode=Required on the first round, then normal Auto mode.
  */
 async function runToolLoop(
     model: vscode.LanguageModelChat,
     messages: vscode.LanguageModelChatMessage[],
     options: vscode.LanguageModelChatRequestOptions,
+    allTools: readonly vscode.LanguageModelToolInformation[],
+    toolReferences: vscode.ChatLanguageModelToolReference[],
     request: vscode.ChatRequest,
     stream: vscode.ChatResponseStream,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
+    toolCallRounds: { response: string; toolCalls: vscode.LanguageModelToolCallPart[] }[],
+    toolCallResults: Record<string, vscode.LanguageModelToolResult>,
 ): Promise<void> {
     const MAX_ROUNDS = 15;
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
+        // If user explicitly referenced a tool via #toolName, force it on this round
+        const requestedTool = toolReferences.shift();
+        if (requestedTool) {
+            options.toolMode = vscode.LanguageModelChatToolMode.Required;
+            options.tools = allTools
+                .filter(t => t.name === requestedTool.name)
+                .map(t => ({
+                    name: t.name,
+                    description: t.description,
+                    inputSchema: t.inputSchema as Record<string, unknown>,
+                }));
+        } else {
+            options.toolMode = undefined;
+            options.tools = allTools.map(t => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema as Record<string, unknown>,
+            }));
+        }
+
         const response = await model.sendRequest(messages, options, token);
 
         const toolCalls: vscode.LanguageModelToolCallPart[] = [];
@@ -144,10 +193,47 @@ async function runToolLoop(
             stream.progress(`Running ${toolCall.name}...`);
 
             try {
-                const result = await vscode.lm.invokeTool(toolCall.name, {
+                let result = await vscode.lm.invokeTool(toolCall.name, {
                     input: toolCall.input,
                     toolInvocationToken: request.toolInvocationToken,
                 } as vscode.LanguageModelToolInvocationOptions<object>, token);
+
+                // Auto-retry for sshfs_edit_file: if oldString not found, re-read the file and retry once
+                if (toolCall.name === 'sshfs_edit_file') {
+                    const resultText = result.content
+                        .filter((p): p is vscode.LanguageModelTextPart => p instanceof vscode.LanguageModelTextPart)
+                        .map(p => p.value).join('');
+
+                    if (resultText.includes('oldString was not found') || resultText.includes('oldString not found')) {
+                        const input = toolCall.input as { path?: string; connectionName?: string };
+                        if (input.path) {
+                            Logging.info`ChatParticipant auto-retry: re-reading ${input.path} before retrying edit`;
+                            stream.progress(`Edit failed — re-reading file and retrying...`);
+
+                            // Read the file to refresh Copilot's context
+                            try {
+                                const readResult = await vscode.lm.invokeTool('sshfs_read_file', {
+                                    input: { path: input.path, connectionName: input.connectionName },
+                                    toolInvocationToken: request.toolInvocationToken,
+                                } as vscode.LanguageModelToolInvocationOptions<object>, token);
+
+                                // Retry the edit — the model will see the fresh content in the next round
+                                // We pass the read result as context back to the model
+                                const readText = readResult.content
+                                    .filter((p): p is vscode.LanguageModelTextPart => p instanceof vscode.LanguageModelTextPart)
+                                    .map(p => p.value).join('');
+
+                                result = new vscode.LanguageModelToolResult([
+                                    new vscode.LanguageModelTextPart(
+                                        `${resultText}\n\nAuto-retry: The file was re-read. Here is the current content:\n${readText}\n\nPlease retry the edit with the correct oldString from the content above.`
+                                    )
+                                ]);
+                            } catch {
+                                // Read failed — keep original error
+                            }
+                        }
+                    }
+                }
 
                 toolCallParts.push(new vscode.LanguageModelToolCallPart(
                     toolCall.callId, toolCall.name, toolCall.input
@@ -169,6 +255,9 @@ async function runToolLoop(
                 ));
             }
         }
+
+        // Track tool call round for metadata
+        toolCallRounds.push({ response: responseText, toolCalls });
 
         // Add assistant turn (with tool calls) + user turn (with tool results)
         if (responseText) {

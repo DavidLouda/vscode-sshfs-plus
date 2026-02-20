@@ -8232,12 +8232,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nan@npm:^2.19.0, nan@npm:^2.20.0":
+"nan@npm:^2.19.0":
   version: 2.22.0
   resolution: "nan@npm:2.22.0"
   dependencies:
     node-gyp: "npm:latest"
   checksum: 10c0/d5d31aefdb218deba308d44867c5f432b4d3aabeb57c70a2b236d62652e9fee7044e5d5afd380d9fef022fe7ebb2f2d6c85ca3cbcac5031aaca3592c844526bb
+  languageName: node
+  linkType: hard
+
+"nan@npm:^2.23.0":
+  version: 2.25.0
+  resolution: "nan@npm:2.25.0"
+  dependencies:
+    node-gyp: "npm:latest"
+  checksum: 10c0/add28b255a880f705f937b6276550ebc09274e8ea9d0e8f598f286c817aedfba22223844297840e597a478d7264537294f8c1eda0eb33a228b7aee57ecf52d45
   languageName: node
   linkType: hard
 
@@ -10451,19 +10460,19 @@ __metadata:
   linkType: hard
 
 "ssh2@npm:^1.16.0":
-  version: 1.16.0
-  resolution: "ssh2@npm:1.16.0"
+  version: 1.17.0
+  resolution: "ssh2@npm:1.17.0"
   dependencies:
     asn1: "npm:^0.2.6"
     bcrypt-pbkdf: "npm:^1.0.2"
     cpu-features: "npm:~0.0.10"
-    nan: "npm:^2.20.0"
+    nan: "npm:^2.23.0"
   dependenciesMeta:
     cpu-features:
       optional: true
     nan:
       optional: true
-  checksum: 10c0/d336a85d87501c64ba230b6c1a2901a9b0e376fe7f7a1640a7f8dbdafe674b2e1a5dc6236ffd1329969dc0cf03cd57759b28743075e61229a984065ee1d56bed
+  checksum: 10c0/637c1b7e8070fc8a3027f8abf771cd98419f56eaf3817171180e768004d4dea26c65fb3763294ed2f784429857f196c83c4f6889d2c31cc0e2648ea5ad730665
   languageName: node
   linkType: hard
 

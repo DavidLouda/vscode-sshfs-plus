@@ -111,7 +111,7 @@ async function handleMessage(message: Message): Promise<any> {
         } else {
           await updateConfig(config, name);
         }
-      } catch (e) {
+      } catch (e: any) {
         Logging.error('Error handling saveConfig message for settings UI:', LOGGING_NO_STACKTRACE);
         Logging.error(JSON.stringify(message), LOGGING_NO_STACKTRACE);
         Logging.error(e);
@@ -129,7 +129,7 @@ async function handleMessage(message: Message): Promise<any> {
       try {
         const uris = await vscode.window.showOpenDialog({});
         if (uris) [uri] = uris;
-      } catch (e) {
+      } catch (e: any) {
         Logging.error`Error handling promptPath message for settings UI:\n${message}\n${e}`;
         error = e.message;
       }

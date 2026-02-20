@@ -11,7 +11,7 @@ const ALL_DEBUG_FLAGS = [
 export class FileSystemRouter implements vscode.FileSystemProvider {
   public onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
   protected onDidChangeFileEmitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-  protected debugFlags: string[];
+  protected debugFlags: string[] = [];
   constructor(protected readonly manager: Manager) {
     this.onDidChangeFile = this.onDidChangeFileEmitter.event;
     subscribeToGlobalFlags(() => {

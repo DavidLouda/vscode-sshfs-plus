@@ -7,6 +7,7 @@ export interface Props<T> {
     description?: React.ReactNode;
     value: T;
     optional?: boolean;
+    required?: boolean;
     group?: FieldGroup;
     preface?: React.ReactNode;
     postface?: React.ReactNode;
@@ -62,7 +63,7 @@ export abstract class FieldBase<T, P extends {} = {}, S extends {} = {}> extends
     public getLabel(): string {
         return this.props.label || '';
     }
-    protected getClassName(): string { return 'Field'; }
+    protected getClassName(): string { return `Field${this.props.required ? ' required' : ''}`; }
     protected getValueClassName(): string { return 'value'; }
     public render() {
         const error = this.getError();

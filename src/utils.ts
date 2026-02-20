@@ -18,7 +18,7 @@ function trimError(error: Error, depth: number): [string[], Error] {
     return [trimmed.split('\n').slice(1), error];
 }
 /** Wrapper around async callback-based functions */
-export async function catchingPromise<T>(executor: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => any, trimStack = 0, causeName = 'catchingPromise'): Promise<T> {
+export async function catchingPromise<T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => any, trimStack = 0, causeName = 'catchingPromise'): Promise<T> {
     let [trimmed, promiseCause]: [string[], Error] = [] as any;
     return new Promise<T>((resolve, reject) => {
         [trimmed, promiseCause] = trimError(new Error(), trimStack + 2);
@@ -70,11 +70,11 @@ export async function toPromise<T>(func: (cb: toPromiseCallback<T>) => void): Pr
     }, 2, 'toPromise');
 }
 
-/** Converts the given number/string to a port number. Throws an error for invalid strings or ports outside the 1-65565 range */
+/** Converts the given number/string to a port number. Throws an error for invalid strings or ports outside the 1-65535 range */
 export function validatePort(port: string | number): number {
     const p = Number(port);
     if (!Number.isInteger(p)) throw new Error(`Wanting to use non-int '${port}' as port`);
-    if (p < 0 || p > 65565) throw new Error(`Wanting to use port ${p} outside the 1-65565 range`);
+    if (p < 0 || p > 65535) throw new Error(`Wanting to use port ${p} outside the 1-65535 range`);
     return p;
 }
 

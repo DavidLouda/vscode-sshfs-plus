@@ -168,8 +168,6 @@ export async function createTerminal(options: TerminalOptions): Promise<SSHPseud
             if (channel) {
                 pseudo.status = 'closed';
                 channel.signal!('INT');
-                channel.signal!('SIGINT');
-                channel.write('\x03');
                 channel.close();
                 pseudo.channel = undefined;
             }

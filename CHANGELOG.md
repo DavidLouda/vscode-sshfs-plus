@@ -1,6 +1,52 @@
 
 # Changelog
 
+## v2.7.2 — SSH FS Plus (2026-02-20)
+
+### Improved
+
+- **Multi-edit in `sshfs_edit_file`** — `edits[]` array for multiple find-and-replace operations in one call (max 20, overlap detection, bottom-to-top application)
+- **Insert mode in `sshfs_edit_file`** — `insertAfterLine` parameter to insert text at a specific line
+- **Auto-retry in `@sshfs`** — on "oldString not found", re-reads the file and feeds fresh content to the model
+- **o1/o3 model fallback** — reasoning models fall back to gpt-4o (no tool-calling support)
+- **Tool references (`#toolName`)** — `toolMode: Required` when user explicitly references a tool with `#`
+- **Better error messages** — all tool errors include actionable recovery hints
+
+## v2.7.1 — SSH FS Plus (2026-02-20)
+
+### New Features
+
+- **QuickDiff change tracking** — gutter indicators, "M" badge in Explorer, Source Control panel with click-to-diff, navigate/accept/reject individual change blocks, auto-scroll to AI-made changes
+- **`sshfs_create_file` chat tool** — Copilot can create new files on remote servers with inline diff support and user confirmation
+- **Auto-reconnect** — on disconnect, retries 3× with exponential backoff (1s → 2s → 4s) before prompting the user
+- **Status bar indicator** — live SSH connection status (disconnected/connecting/connected with names), click to connect
+- **Import from `~/.ssh/config`** — new command parses OpenSSH config and lets you pick hosts to import (Host, HostName, User, Port, IdentityFile, ProxyJump)
+
+### Improved
+
+- **Config editor redesign** — collapsible sections, reordered fields, modern styling, required field indicators, password masking
+- **readDirectory performance** — eliminated N+1 SFTP stat calls; reads file types from directory listing attributes directly
+- **TypeScript strict mode + ES2022 target** — full `strict` enabled, upgraded from ES2019
+- **Async deactivate** — properly awaits connection cleanup (2s timeout) before shutdown
+- **readFile safety** — 50 MB size limit prevents out-of-memory
+- **ssh2 updated to 1.17.0**
+
+### Fixed
+
+- **Connection leak** — `pendingUserCount` never decremented on failure due to variable shadowing
+- **WorkspaceFolder configs** — couldn't be edited or deleted (`alterConfigs` always threw)
+- **Recursive directory delete** — now recursively deletes contents before removing directory
+- **writeFile flags** — properly throws `FileExists`/`FileNotFound` per `FileSystemProvider` contract
+- **SFTP close handler crash** — `sftpCommand` crashed on channel close
+- **Port validation** — ports 65536–65565 were incorrectly allowed
+- **Passwords in debug logs** — `password`, `passphrase`, `privateKey` fields now masked
+- **HTTP proxy** — missing error handler caused hang on failure
+- **Logger crash** — circular reference handling in `JSON.stringify`
+- **Flag listeners** — saw stale values; cache now updated before notifying
+- **Temp directory** — uses `mktemp -d` instead of predictable /tmp path
+- **Proxy Port description** — showed "Hostname or IP address" instead of "Port number"
+- Removed `CorrectHorseBatteryStaple` sample credentials from defaults
+
 ## v2.6.3 — SSH FS Plus (2026-02-19)
 
 ### Changed

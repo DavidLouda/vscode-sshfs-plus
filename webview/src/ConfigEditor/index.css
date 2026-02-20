@@ -5,20 +5,104 @@ div.ConfigEditor {
 
 div.ConfigEditor div.header {
     display: flex;
+    align-items: center;
+    padding: 8px 4px 16px;
+    border-bottom: 1px solid var(--vscode-settings-dropdownBorder);
+    margin-bottom: 4px;
+}
+div.ConfigEditor div.header button.cancel {
+    margin-right: 8px;
 }
 div.ConfigEditor div.title {
-    margin: 6px;
-    height: 100%;
+    margin: 0 0 0 4px;
 }
 
 div.ConfigEditor h3 {
     margin: 0;
+    font-size: 16px;
 }
 div.ConfigEditor h4 {
-    margin: 0;
-    font-size: 85%;
+    margin: 2px 0 0;
+    font-size: 12px;
+    opacity: 0.6;
+    font-weight: normal;
 }
 
 div.ConfigEditor > div.divider {
     margin-top: 20px;
+}
+
+/* Collapsible sections */
+div.ConfigEditor .section {
+    margin-top: 12px;
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+div.ConfigEditor .section-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    background: var(--vscode-settings-dropdownBackground);
+    border-bottom: 1px solid var(--vscode-settings-dropdownBorder);
+    transition: background-color 0.15s ease;
+}
+
+div.ConfigEditor .section-header:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+div.ConfigEditor .section.collapsed .section-header {
+    border-bottom: none;
+}
+
+div.ConfigEditor .section-arrow {
+    margin-right: 8px;
+    font-size: 10px;
+    width: 12px;
+    display: inline-block;
+    text-align: center;
+    opacity: 0.7;
+}
+
+div.ConfigEditor .section-icon {
+    margin-right: 8px;
+    font-size: 14px;
+}
+
+div.ConfigEditor .section-title {
+    flex-grow: 1;
+}
+
+div.ConfigEditor .section-hint {
+    font-size: 11px;
+    font-weight: normal;
+    opacity: 0.5;
+    font-style: italic;
+}
+
+div.ConfigEditor .section-content {
+    padding: 0 8px 8px;
+}
+
+/* Action buttons */
+div.ConfigEditor > div.actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--vscode-settings-dropdownBorder);
+}
+
+div.ConfigEditor > div.actions .actions-right {
+    display: flex;
+    gap: 5px;
 }

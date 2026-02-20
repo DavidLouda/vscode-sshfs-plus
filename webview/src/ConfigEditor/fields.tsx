@@ -24,14 +24,14 @@ function pathValidator(value?: string): string | null {
 
 export function name(config: FileSystemConfig, onChange: FSCChanged<'name'>): React.ReactElement {
   const callback = (value: string) => onChange('name', value);
-  const description = 'Name of the config. Can only exists of lowercase alphanumeric characters, slashes and any of these: _.+-@';
-  return <FieldString key="name" label="Name" value={config.name} onChange={callback} validator={invalidConfigName} description={description} />
+  const description = 'Name of the config. Can only consist of lowercase alphanumeric characters, slashes and any of these: _.+-@';
+  return <FieldString key="name" label="Name" value={config.name} onChange={callback} validator={invalidConfigName} description={description} placeholder="e.g. my-server" required />
 }
 
 export function label(config: FileSystemConfig, onChange: FSCChanged<'label'>): React.ReactElement {
   const callback = (newValue?: string) => onChange('label', newValue);
   const description = 'Label to display in some UI places (e.g. popups)';
-  return <FieldString key="label" label="Label" value={config.label} onChange={callback} optional description={description} />
+  return <FieldString key="label" label="Label" value={config.label} onChange={callback} optional description={description} placeholder="e.g. My Server" />
 }
 
 export function group(config: FileSystemConfig, onChange: FSCChanged<'group'>): React.ReactElement {
@@ -68,7 +68,7 @@ export function host(config: FileSystemConfig, onChange: FSCChanged<'host'>): Re
   const description = 'Hostname or IP address of the server. Supports environment variables, e.g. $HOST';
   const values = ['<Prompt>'];
   const value = (config.host as any) === true ? '<Prompt>' : config.host;
-  return <FieldDropdownWithInput key="host" label="Host" {...{ value, values, description }} onChange={callback} optional />
+  return <FieldDropdownWithInput key="host" label="Host" {...{ value, values, description }} onChange={callback} placeholder="e.g. server.example.com" required />
 }
 
 export function port(config: FileSystemConfig, onChange: FSCChanged<'port'>): React.ReactElement {
@@ -80,7 +80,7 @@ export function port(config: FileSystemConfig, onChange: FSCChanged<'port'>): Re
 export function root(config: FileSystemConfig, onChange: FSCChanged<'root'>): React.ReactElement {
   const callback = (value: string) => onChange('root', value);
   const description = 'Path on the remote server that should be opened by default when creating a terminal or using the `Add as Workspace folder` command/button. Defaults to `/`';
-  return <FieldString key="root" label="Root" value={config.root} onChange={callback} optional validator={pathValidator} description={description} />
+  return <FieldString key="root" label="Root" value={config.root} onChange={callback} optional validator={pathValidator} description={description} placeholder="/ (default)" />
 }
 
 export function agent(config: FileSystemConfig, onChange: FSCChanged<'agent'>): React.ReactElement {
@@ -95,7 +95,7 @@ export function username(config: FileSystemConfig, onChange: FSCChanged<'usernam
   const description = 'Username for authentication. Supports environment variables, e.g. $USERNAME';
   const values = ['<Prompt>', '$USERNAME'];
   const value = (config.username as any) === true ? '<Prompt>' : config.username;
-  return <FieldDropdownWithInput key="username" label="Username" {...{ value, values, description }} onChange={callback} optional />
+  return <FieldDropdownWithInput key="username" label="Username" {...{ value, values, description }} onChange={callback} optional placeholder="e.g. root" />
 }
 
 export function password(config: FileSystemConfig, onChange: FSCChanged<'password'>): React.ReactElement {
@@ -103,7 +103,7 @@ export function password(config: FileSystemConfig, onChange: FSCChanged<'passwor
   const description = 'Password for password-based user authentication. Supports env variables. This gets saved in plaintext! Using prompts or private keys is recommended!';
   const values = ['<Prompt>'];
   const value = (config.password as any) === true ? '<Prompt>' : config.password;
-  return <FieldDropdownWithInput key="password" label="Password" {...{ value, values, description }} onChange={callback} optional />
+  return <FieldDropdownWithInput key="password" label="Password" {...{ value, values, description }} onChange={callback} optional inputType="password" />
 }
 
 export function privateKeyPath(config: FileSystemConfig, onChange: FSCChanged<'privateKeyPath'>): React.ReactElement {
@@ -117,7 +117,7 @@ export function passphrase(config: FileSystemConfig, onChange: FSCChanged<'passp
   const description = 'Passphrase for unlocking an encrypted private key. Supports env variables. This gets saved in plaintext! Using prompts or private keys is recommended!';
   const values = ['<Prompt>'];
   const value = (config.passphrase as any) === true ? '<Prompt>' : config.passphrase;
-  return <FieldDropdownWithInput key="passphrase" label="Passphrase" {...{ value, values, description }} onChange={callback} optional />
+  return <FieldDropdownWithInput key="passphrase" label="Passphrase" {...{ value, values, description }} onChange={callback} optional inputType="password" />
 }
 
 export function agentForward(config: FileSystemConfig, onChange: FSCChanged<'agentForward'>): React.ReactElement {
@@ -177,8 +177,42 @@ export function encoding(config: FileSystemConfig, onChange: FSCChanged<'encodin
 }
 
 export type FieldFactory = (config: FileSystemConfig, onChange: FSCChanged, onChangeMultiple: FSCChangedMultiple) => React.ReactElement | null;
-export const FIELDS: FieldFactory[] = [
-  name, label, group, merge, extend, putty, host, port,
-  root, agent, username, password, privateKeyPath, passphrase,
-  newFileMode, agentForward, sftpCommand, sftpSudo, terminalCommand, taskCommand, encoding,
-  PROXY_FIELD];
+
+export interface FieldSection {
+  title: string;
+  icon?: string;
+  hint?: string;
+  fields: FieldFactory[];
+  defaultCollapsed?: boolean;
+}
+
+export const FIELD_SECTIONS: FieldSection[] = [
+  {
+    title: 'Connection',
+    icon: '🔌',
+    hint: 'Server address and path',
+    fields: [name, label, host, port, root],
+  },
+  {
+    title: 'Authentication',
+    icon: '🔑',
+    hint: 'How to log in',
+    fields: [username, password, privateKeyPath, passphrase, agent, agentForward, putty],
+  },
+  {
+    title: 'Terminal & Tasks',
+    icon: '💻',
+    hint: 'Shell and command settings',
+    fields: [terminalCommand, taskCommand, sftpCommand, sftpSudo, encoding],
+    defaultCollapsed: true,
+  },
+  {
+    title: 'Advanced',
+    icon: '⚙️',
+    hint: 'Config inheritance, proxy, permissions',
+    fields: [group, merge, extend, newFileMode, PROXY_FIELD],
+    defaultCollapsed: true,
+  },
+];
+
+export const FIELDS: FieldFactory[] = FIELD_SECTIONS.flatMap(s => s.fields);

@@ -44,7 +44,7 @@ export async function socks(config: FileSystemConfig): Promise<NodeJS.ReadableSt
       },
     });
     return con.socket as NodeJS.ReadableStream;
-  } catch (e) {
+  } catch (e: any) {
     throw new Error(`Error while connecting to the the proxy: ${e.message}`);
   }
 }
@@ -68,7 +68,10 @@ export function http(config: FileSystemConfig): Promise<NodeJS.ReadableStream> {
       req.on('connect', (res, socket) => {
         resolve(socket as NodeJS.ReadableStream);
       });
-    } catch (e) {
+      req.on('error', (e) => {
+        reject(new Error(`Error while connecting to the the proxy: ${e.message}`));
+      });
+    } catch (e: any) {
       reject(new Error(`Error while connecting to the the proxy: ${e.message}`));
     }
   });

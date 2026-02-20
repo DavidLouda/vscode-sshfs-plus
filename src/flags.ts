@@ -105,10 +105,11 @@ function calculateFlags(): Record<string, FlagCombo> {
   applyList(config.workspaceValue, 'Workspace Settings');
   applyList(config.workspaceFolderValue, 'WorkspaceFolder Settings');
   Logging.info`Calculated config flags: ${flags}`;
+  cachedFlags = flags;
   for (const listener of globalFlagsSubscribers) {
     catchingPromise(listener).catch(e => Logging.error`onGlobalFlagsChanged listener errored: ${e}`);
   }
-  return cachedFlags = flags;
+  return cachedFlags;
 }
 vscode.workspace.onDidChangeConfiguration(event => {
   if (event.affectsConfiguration('sshfs.flags'))

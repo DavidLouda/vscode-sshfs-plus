@@ -4,6 +4,8 @@ import { FieldBase } from './base';
 interface Props {
     values: string[];
     optional?: boolean;
+    placeholder?: string;
+    inputType?: string;
     displayStyle?(item?: string): React.CSSProperties;
 }
 interface State {
@@ -24,7 +26,7 @@ export class FieldDropdownWithInput extends FieldBase<string | undefined, Props,
         const { newValue, open } = this.state;
         return <div className="FieldDropdown FieldDropdownWithInput" ref={this.mainDivRef}>
             <p className="arrow" onClick={this.toggle}>▼</p>
-            <input className="current" value={newValue || ''} onChange={this.onChangeEvent} onClick={this.toggle} />
+            <input className="current" value={newValue || ''} onChange={this.onChangeEvent} onClick={this.toggle} placeholder={this.props.placeholder} type={this.props.inputType || 'text'} />
             {open && this.generateDropdown()}
         </div>;
     }

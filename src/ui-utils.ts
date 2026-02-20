@@ -144,7 +144,7 @@ export async function pickComplex(manager: Manager, options: PickComplexOptions)
             let cons = manager.connectionManager.getActiveConnections();
             if (typeof promptConnections === 'string') cons = cons.filter(con => con.actualConfig.name === promptConnections);
             if (nameFilter) cons = cons.filter(con => con.actualConfig.name === nameFilter);
-            const terminals = cons.reduce((all, con) => [...all, ...con.terminals], []);
+            const terminals = cons.reduce<SSHPseudoTerminal[]>((all, con) => [...all, ...con.terminals], []);
             items.push(...terminals.map(config => formatItem(config, true)));
             toSelect.push('terminal');
         }

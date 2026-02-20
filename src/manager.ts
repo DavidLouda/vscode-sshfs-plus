@@ -7,6 +7,7 @@ import { getFlagBoolean } from './flags';
 import { Connection, ConnectionManager } from './connection';
 import { Logging, LOGGING_NO_STACKTRACE } from './logging';
 import { isSSHPseudoTerminal, replaceVariables, replaceVariablesRecursive } from './pseudoTerminal';
+import { getQuickDiffManager } from './quickDiff';
 import type { SSHFileSystem } from './sshFileSystem';
 import { catchingPromise, joinCommands } from './utils';
 
@@ -54,7 +55,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
     return this.creatingFileSystems[name] ||= catchingPromise<SSHFileSystem>(async (resolve, reject) => {
       config ||= getConfig(name);
       if (!config) throw new Error(`Couldn't find a configuration with the name '${name}'`);
-      const con = await this.connectionManager.createConnection(name, config);
+      con = await this.connectionManager.createConnection(name, config);
       this.connectionManager.update(con, con => con.pendingUserCount++);
       config = con.actualConfig;
       const { getSFTP } = await import('./connect');
@@ -65,10 +66,12 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
       Logging.info`Created SSHFileSystem for ${name}, reading root directory...`;
       this.connectionManager.update(con, con => con.filesystems.push(fs));
       this.fileSystems.push(fs);
+      getQuickDiffManager()?.registerFileSystem(name);
       delete this.creatingFileSystems[name];
       fs.onClose(() => {
         this.fileSystems = this.fileSystems.filter(f => f !== fs);
-        this.connectionManager.update(con, con => con.filesystems = con.filesystems.filter(f => f !== fs));
+        this.connectionManager.update(con!, con => con.filesystems = con.filesystems.filter(f => f !== fs));
+        getQuickDiffManager()?.unregisterFileSystem(name);
       });
       vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
       con.client.once('close', hadError => !fs.closing && this.promptReconnect(name));
@@ -86,7 +89,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
         if (e instanceof vscode.FileSystemError) {
           message = `The home directory '${con.home}' in SSH FS Plus '${name}' is not a directory, this might be a sign of bad permissions`;
         }
-        Logging.error(e);
+        Logging.error(e as Error);
         const answer = await vscode.window.showWarningMessage(message, 'Stop', 'Ignore');
         if (answer === 'Stop') return reject(new Error('User stopped filesystem creation after unaccessible home directory error'));
       }
@@ -99,7 +102,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
         throw e;
       }
       Logging.error`Error while connecting to SSH FS Plus ${name}:\n${e}`;
-      vscode.window.showErrorMessage(`Error while connecting to SSH FS Plus ${name}:\n${e.message}`, 'Retry', 'Configure', 'Ignore').then((chosen) => {
+      vscode.window.showErrorMessage(`Error while connecting to SSH FS Plus ${name}:\n${(e as any).message}`, 'Retry', 'Configure', 'Ignore').then((chosen) => {
         delete this.creatingFileSystems[name];
         if (chosen === 'Retry') {
           this.createFileSystem(name).catch(() => { });
@@ -137,8 +140,36 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
   public async promptReconnect(name: string) {
     const config = getConfig(name);
     if (!config) return;
-    const choice = await vscode.window.showWarningMessage(`SSH FS Plus ${config.label || config.name} disconnected`, 'Ignore', 'Disconnect');
-    if (choice === 'Disconnect') this.commandDisconnect(name);
+    // Auto-reconnect with exponential backoff (3 attempts: 1s, 2s, 4s)
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 1000;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+      Logging.info`Auto-reconnect attempt ${attempt}/${MAX_RETRIES} for '${name}' in ${delay}ms`;
+      await new Promise(r => setTimeout(r, delay));
+      // Check if user already reconnected or disconnected manually
+      const existing = this.connectionManager.getActiveConnection(name);
+      if (existing) {
+        Logging.info`Auto-reconnect cancelled for '${name}': already connected`;
+        return;
+      }
+      try {
+        await this.commandConnect(config);
+        Logging.info`Auto-reconnect succeeded for '${name}' on attempt ${attempt}`;
+        vscode.window.showInformationMessage(`SSH FS Plus ${config.label || config.name} reconnected automatically`);
+        return;
+      } catch (e) {
+        Logging.warning`Auto-reconnect attempt ${attempt} failed for '${name}': ${e}`;
+      }
+    }
+    // All auto-reconnect attempts failed — prompt user
+    Logging.info`Auto-reconnect failed after ${MAX_RETRIES} attempts for '${name}', prompting user`;
+    const choice = await vscode.window.showWarningMessage(
+      `SSH FS Plus ${config.label || config.name} disconnected (auto-reconnect failed after ${MAX_RETRIES} attempts)`,
+      'Reconnect', 'Disconnect', 'Ignore'
+    );
+    if (choice === 'Reconnect') this.commandConnect(config);
+    else if (choice === 'Disconnect') this.commandDisconnect(name);
   }
   /* TaskProvider */
   public provideTasks(token?: vscode.CancellationToken | undefined): vscode.ProviderResult<vscode.Task[]> {
@@ -150,14 +181,15 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
       vscode.TaskScope.Workspace,
       `SSH Task '${task.name}'`,
       'ssh',
-      new vscode.CustomExecution(async (resolved: SSHShellTaskOptions) => {
+      new vscode.CustomExecution(async (resolved: vscode.TaskDefinition) => {
+        let options = resolved as SSHShellTaskOptions;
         const { createTerminal, createTextTerminal } = await import('./pseudoTerminal');
         try {
-          if (!resolved.host) throw new Error('Missing field \'host\' in task description');
-          if (!resolved.command) throw new Error('Missing field \'command\' in task description');
-          const connection = await this.connectionManager.createConnection(resolved.host);
-          resolved = await replaceVariablesRecursive(resolved, value => replaceVariables(value, connection.actualConfig));
-          let { command, workingDirectory } = resolved;
+          if (!options.host) throw new Error('Missing field \'host\' in task description');
+          if (!options.command) throw new Error('Missing field \'command\' in task description');
+          const connection = await this.connectionManager.createConnection(options.host);
+          options = await replaceVariablesRecursive(options, value => replaceVariables(value, connection.actualConfig));
+          let { command, workingDirectory } = options;
           const [useWinCmdSep] = getFlagBoolean('WINDOWS_COMMAND_SEPARATOR', connection.shellConfig.isWindows, connection.actualConfig.flags);
           const separator = useWinCmdSep ? ' && ' : '; ';
           let { taskCommand = '$COMMAND' } = connection.actualConfig;
@@ -176,7 +208,7 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
           pty.onDidClose(() => this.connectionManager.update(connection,
             con => con.terminals = con.terminals.filter(t => t !== pty)));
           return pty;
-        } catch (e) {
+        } catch (e: any) {
           return createTextTerminal(`Error: ${e.message || e}`);
         }
       })
@@ -256,12 +288,12 @@ export class Manager implements vscode.TaskProvider, vscode.TerminalLinkProvider
     if (folders.length === left.length) return;
     vscode.workspace.updateWorkspaceFolders(start, folders.length - start, ...left);
   }
-  public async commandTerminal(target: FileSystemConfig | Connection, uri?: vscode.Uri) {
+  public async commandTerminal(target: FileSystemConfig | Connection, uri?: vscode.Uri): Promise<void> {
     Logging.info`Command received to open a terminal for ${commandArgumentToName(target)}${uri ? ` in ${uri}` : ''}`;
     const config = 'client' in target ? target.actualConfig : target;
     try {
       await this.createTerminal(config.label || config.name, target, uri);
-    } catch (e) {
+    } catch (e: any) {
       Logging.error`Error while creating terminal:\n${e}`;
       const choice = await vscode.window.showErrorMessage<vscode.MessageItem>(
         `Couldn't start a terminal for ${config.name}: ${e.message || e}`,

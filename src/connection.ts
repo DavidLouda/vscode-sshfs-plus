@@ -95,7 +95,7 @@ export class ConnectionManager {
                                     logging.warning(`File '${absolutePath}' not found, prompting to create empty file`);
                                     const choice = await vscode.window.showWarningMessage(`File '${absolutePath}' not found, create it?`, { modal: true }, 'Yes');
                                     if (choice !== 'Yes') return;
-                                    try { await vscode.workspace.fs.writeFile(uri, Buffer.of()); } catch (e) {
+                                    try { await vscode.workspace.fs.writeFile(uri, Buffer.of()); } catch (e: any) {
                                         logging.error(e);
                                         vscode.window.showErrorMessage(`Failed to create an empty file at '${absolutePath}'`);
                                         return;
@@ -105,7 +105,7 @@ export class ConnectionManager {
                                 }
                                 vscode.window.showErrorMessage(`Error opening ${absolutePath}: ${e.name.replace(/ \(FileSystemError\)/g, '')}`);
                             } else {
-                                vscode.window.showErrorMessage(`Error opening ${absolutePath}: ${e.message || e}`);
+                                vscode.window.showErrorMessage(`Error opening ${absolutePath}: ${(e as any).message || e}`);
                             }
                         }
                         return;

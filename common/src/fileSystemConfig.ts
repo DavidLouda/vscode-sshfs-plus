@@ -134,7 +134,7 @@ export function isFileSystemConfig(config: any): config is FileSystemConfig {
 export function invalidConfigName(name: string) {
   if (!name) return 'Missing a name for this SSH FS Plus config';
   if (name.match(/^[\w_\\/.@\-+]+$/)) return null;
-  return `A SSH FS Plus name can only exists of lowercase alphanumeric characters, slashes and any of these: _.+-@`;
+  return `A SSH FS Plus name can only consist of lowercase alphanumeric characters, slashes and any of these: _.+-@`;
 }
 
 /**

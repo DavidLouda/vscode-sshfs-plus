@@ -33,6 +33,7 @@ The biggest addition. Eight custom [Language Model Tools](https://code.visualstu
 | `sshfs_read_file` | Read file contents with line ranges (server-side, no SFTP download) |
 | `sshfs_edit_file` | Find-and-replace editing via SFTP — single edit, multi-edit (`edits[]`), or line insert (`insertAfterLine`) |
 | `sshfs_create_file` | Create new files on the remote server with inline diff preview |
+| `sshfs_mysql_query` | Execute MySQL/MariaDB queries — auto-discovers credentials from project configs, formatted table output |
 
 VS Code's built-in Copilot tools are designed for local/Remote SSH workspaces and don't support custom `ssh://` filesystem URIs. These tools bridge that gap — they execute directly on the remote server via SSH, so Copilot works just as well on SSH FS mounts as it does locally.
 

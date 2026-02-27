@@ -176,6 +176,14 @@ export function encoding(config: FileSystemConfig, onChange: FSCChanged<'encodin
   return <FieldDropdownWithInput key="encoding" label="Encoding" {...{ value: config.encoding, values, description }} onChange={callback} optional />
 }
 
+export function mysqlConfirmWrites(config: FileSystemConfig, onChange: FSCChanged<'mysqlConfirmWrites'>): React.ReactElement {
+  const callback = (newValue: string) => onChange('mysqlConfirmWrites', newValue === 'Enabled' ? undefined : false);
+  const description = 'Require user confirmation before executing write SQL queries (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE) via the MySQL tool';
+  const values = ['Enabled', 'Disabled'];
+  const value = config.mysqlConfirmWrites === false ? 'Disabled' : 'Enabled';
+  return <FieldDropdown key="mysqlConfirmWrites" label="Confirm write queries" {...{ value, values, description }} onChange={callback} />;
+}
+
 export type FieldFactory = (config: FileSystemConfig, onChange: FSCChanged, onChangeMultiple: FSCChangedMultiple) => React.ReactElement | null;
 
 export interface FieldSection {
@@ -211,6 +219,13 @@ export const FIELD_SECTIONS: FieldSection[] = [
     icon: '⚙️',
     hint: 'Config inheritance, proxy, permissions',
     fields: [group, merge, extend, newFileMode, PROXY_FIELD],
+    defaultCollapsed: true,
+  },
+  {
+    title: 'Database',
+    icon: '🗄️',
+    hint: 'MySQL query tool settings',
+    fields: [mysqlConfirmWrites],
     defaultCollapsed: true,
   },
 ];

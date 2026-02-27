@@ -3,7 +3,7 @@
     "displayName": "SSH FS Plus",
     "description": "SSH workspace with full GitHub Copilot & AI support — file system, terminals, tasks, and 8 language model tools for remote development over SSH",
     "publisher": "DavidLouda",
-    "version": "2.7.2",
+    "version": "2.8.0",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -16,7 +16,8 @@
     ],
     "activationEvents": [
         "onFileSystem:ssh",
-        "onFileSystemAccess:ssh"
+        "onFileSystemAccess:ssh",
+        "onStartupFinished"
     ],
     "main": "./dist/extension.js",
     "homepage": "https://github.com/DavidLouda/vscode-sshfs-plus",
@@ -519,7 +520,7 @@
             {
                 "name": "sshfs_run_command",
                 "displayName": "SSH Run Command",
-                "modelDescription": "Execute a shell command on the remote SSH server. Use for: build/test, git, services, file metadata (stat/wc), and other general tasks. DO NOT use for: text search (use sshfs_search_text), file reading (use sshfs_read_file), file editing (use sshfs_edit_file), file search (use sshfs_find_files).",
+                "modelDescription": "Execute a shell command on the remote SSH server. ONLY for: build/test, git, service management (systemctl), package managers (composer/npm/pip), cron, process info. NEVER use for: grep/search (use sshfs_search_text), cat/head/tail/reading files (use sshfs_read_file), editing files (use sshfs_edit_file), find/ls (use sshfs_find_files/sshfs_list_directory), mysql/mariadb CLI (use sshfs_mysql_query).",
                 "canBeReferencedInPrompt": true,
                 "toolReferenceName": "sshCommand",
                 "icon": "$(terminal)",
@@ -781,6 +782,48 @@
                     "required": [
                         "path",
                         "content"
+                    ]
+                },
+                "when": "sshfs.openConnections > 0"
+            },
+            {
+                "name": "sshfs_mysql_query",
+                "displayName": "SSH MySQL Query",
+                "modelDescription": "Execute SQL queries on the remote MySQL/MariaDB server via SSH. Auto-discovers DB credentials from project config files (any CMS/framework). Supports all SQL: SELECT, INSERT, UPDATE, DELETE, SHOW TABLES, SHOW DATABASES, DESCRIBE, CREATE, ALTER, DROP. Use this INSTEAD of sshfs_run_command with mysql CLI. For schema exploration: SHOW DATABASES, SHOW TABLES, DESCRIBE table_name. Optional params host/user/password/database override auto-detected credentials. Default host: 127.0.0.1. IMPORTANT: Always use 127.0.0.1 instead of localhost for host — localhost forces Unix socket which often fails.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "sshMySQLQuery",
+                "icon": "$(database)",
+                "userDescription": "Execute SQL queries on the remote MySQL/MariaDB server",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The SQL query to execute (e.g. 'SELECT * FROM users LIMIT 10', 'SHOW TABLES', 'DESCRIBE orders')"
+                        },
+                        "database": {
+                            "type": "string",
+                            "description": "Database name to use. Overrides auto-detected database for this query only."
+                        },
+                        "host": {
+                            "type": "string",
+                            "description": "MySQL host. Overrides auto-detected host. Default: 127.0.0.1"
+                        },
+                        "user": {
+                            "type": "string",
+                            "description": "MySQL username. Overrides auto-detected user."
+                        },
+                        "password": {
+                            "type": "string",
+                            "description": "MySQL password. Overrides auto-detected password."
+                        },
+                        "connectionName": {
+                            "type": "string",
+                            "description": "The SSH FS connection name to use. If omitted, uses the first active connection."
+                        }
+                    },
+                    "required": [
+                        "query"
                     ]
                 },
                 "when": "sshfs.openConnections > 0"

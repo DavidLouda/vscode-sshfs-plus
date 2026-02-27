@@ -48,7 +48,7 @@ class CopyPuttyExecutable {
 
 /**@type {webpack.Configuration}*/
 const config = {
-    mode: 'development',
+    mode: 'production',
     target: 'node',
     node: false,
     entry: './src/extension.ts',
@@ -61,7 +61,9 @@ const config = {
     },
     devtool: 'source-map',
     performance: {
-        hints: 'warning'
+        hints: 'warning',
+        maxAssetSize: 350_000,
+        maxEntrypointSize: 350_000,
     },
     externals: {
         vscode: 'commonjs vscode',

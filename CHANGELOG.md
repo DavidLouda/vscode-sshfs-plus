@@ -1,6 +1,22 @@
 
 # Changelog
 
+## v2.8.0 — SSH FS Plus (2026-02-27)
+
+### New
+
+- **`sshfs_mysql_query` Copilot tool** — execute MySQL/MariaDB queries on remote servers via SSH. Auto-discovers credentials from config files, caches them per session, supports explicit overrides. Write queries require user confirmation (configurable per server via `mysqlConfirmWrites`).
+- **Config editor: Database section** — new "Database 🗄️" section with `Confirm write queries` dropdown
+
+### Improved
+
+- **`@sshfs` chat history** — `onStartupFinished` activation event ensures previous sessions are visible even without active SSH
+- **Anti-hallucination prompt** — numbered tool list with "NO OTHER TOOLS EXIST" guard
+- **Stricter `sshfs_run_command`** — expanded rules forbid grep/cat/head/tail/sed/awk/mysql via run_command; whitelist for allowed uses
+- **MySQL `localhost` → `127.0.0.1`** — automatic normalization to TCP/IP (Unix socket often fails on shared hosting)
+- **Robust credential discovery** — tighter regex, mandatory `DB` prefix for env vars, space validation for DB names
+- **Auto-save in prompt** — agent no longer tells users to press Ctrl+S
+
 ## v2.7.2 — SSH FS Plus (2026-02-20)
 
 ### Improved

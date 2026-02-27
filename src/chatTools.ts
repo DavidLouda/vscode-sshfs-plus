@@ -86,6 +86,30 @@ interface SSHSearchTextInput {
 }
 
 /**
+ * Input schema for the sshfs_mysql_query language model tool.
+ */
+interface SSHMySQLQueryInput {
+    query: string;
+    database?: string;
+    host?: string;
+    user?: string;
+    password?: string;
+    connectionName?: string;
+}
+
+/**
+ * Discovered MySQL credentials from a project config file.
+ */
+interface MySQLCredentials {
+    host: string;
+    user: string;
+    password: string;
+    database: string;
+    /** Source file where these credentials were found */
+    source: string;
+}
+
+/**
  * Executes a command on the SSH server and returns stdout.
  * Returns null if the command fails, produces no output, or times out.
  */
@@ -1521,6 +1545,418 @@ class SSHSearchTextTool implements vscode.LanguageModelTool<SSHSearchTextInput> 
     }
 }
 
+// ─── MySQL Query Tool ───────────────────────────────────────────────────────────
+
+/** In-memory cache of discovered MySQL credentials per SSH connection name. */
+const mysqlCredentialsCache = new Map<string, MySQLCredentials>();
+
+/**
+ * Auto-discovers MySQL/MariaDB credentials from project config files on the
+ * remote server. Searches generically for common patterns across PHP configs,
+ * .env files, YAML, INI, and XML files — not limited to specific CMS frameworks.
+ *
+ * Returns the first complete set of credentials found, or null if none.
+ */
+async function discoverMySQLCredentials(
+    client: Client,
+    root: string,
+    token?: vscode.CancellationToken
+): Promise<MySQLCredentials | null> {
+    // 1. Find candidate files that likely contain DB config (max depth 4)
+    const findCmd = `find ${shellEscape(root)} -maxdepth 4 -type f \\( ` +
+        `-name 'configuration.php' -o -name 'wp-config.php' -o -name 'config.php' ` +
+        `-o -name '.env' -o -name '*.env' -o -name 'database.php' -o -name 'db.php' ` +
+        `-o -name 'settings.php' -o -name 'local.php' -o -name 'app.ini' ` +
+        `-o -name 'config.yml' -o -name 'config.yaml' -o -name 'parameters.yml' ` +
+        `-o -name 'config.json' -o -name 'database.yml' -o -name 'database.yaml' ` +
+        `\\) ! -path '*/vendor/*' ! -path '*/node_modules/*' ! -path '*/.git/*' 2>/dev/null | head -20`;
+
+    const files = await execCommand(client, findCmd, token, 10_000);
+    if (!files) return null;
+
+    const filePaths = files.trim().split('\n').filter(f => f.trim());
+    if (filePaths.length === 0) return null;
+
+    // 2. Read each candidate file and try to extract credentials
+    for (const filePath of filePaths) {
+        const content = await execCommand(client, `cat ${shellEscape(filePath.trim())}`, token, 5_000);
+        if (!content) continue;
+
+        const creds = parseMySQLCredentials(content, filePath.trim());
+        if (creds && creds.database) {
+            return creds;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Parses MySQL credentials from file content using multiple patterns
+ * (PHP variables/defines/arrays, .env KEY=VALUE, YAML key: value).
+ */
+function parseMySQLCredentials(content: string, source: string): MySQLCredentials | null {
+    const result: Partial<MySQLCredentials> = { source };
+
+    // Patterns for host (require db/DB prefix for variable/env patterns)
+    const hostPatterns = [
+        /(?:\$(?:db_?)host|(?:DB_?)HOST|db\.host|database\.host)\s*[=:]\s*['"]([^'"]+)['"]/i,
+        /define\s*\(\s*['"]DB_HOST['"]\s*,\s*['"]([^'"]+)['"]/i,
+        /['"](?:db_?)?host['"]\s*=>\s*['"]([^'"]+)['"]/i,
+    ];
+
+    // Patterns for username (require db/DB prefix for variable/env patterns)
+    const userPatterns = [
+        /(?:\$(?:db_?)user(?:name)?|(?:DB_?)USER(?:NAME)?|db\.user(?:name)?|database\.user(?:name)?)\s*[=:]\s*['"]([^'"]+)['"]/i,
+        /define\s*\(\s*['"]DB_USER(?:NAME)?['"]\s*,\s*['"]([^'"]+)['"]/i,
+        /['"](?:db_?)?user(?:name)?['"]\s*=>\s*['"]([^'"]+)['"]/i,
+    ];
+
+    // Patterns for password (require db/DB prefix for variable/env patterns)
+    const passwordPatterns = [
+        /(?:\$(?:db_?)pass(?:word)?|(?:DB_?)PASS(?:WORD)?|db\.pass(?:word)?|database\.pass(?:word)?)\s*[=:]\s*['"]([^'"]*)['"]/i,
+        /define\s*\(\s*['"]DB_PASS(?:WORD)?['"]\s*,\s*['"]([^'"]*)['"]/i,
+        /['"](?:db_?)?pass(?:word)?['"]\s*=>\s*['"]([^'"]*)['"]/i,
+    ];
+
+    // Patterns for database name (require db/DB prefix for variable/env patterns)
+    const databasePatterns = [
+        /(?:\$(?:db_?)(?:name|database)|(?:DB_?)(?:NAME|DATABASE)|db\.(?:name|database)|database\.(?:name|database))\s*[=:]\s*['"]([^'"]+)['"]/i,
+        /define\s*\(\s*['"]DB_NAME['"]\s*,\s*['"]([^'"]+)['"]/i,
+        /['"](?:db_?(?:name)?|database)['"]\s*=>\s*['"]([^'"]+)['"]/i,
+    ];
+
+    for (const p of hostPatterns) {
+        const m = content.match(p);
+        if (m) { result.host = m[1]; break; }
+    }
+    for (const p of userPatterns) {
+        const m = content.match(p);
+        if (m) { result.user = m[1]; break; }
+    }
+    for (const p of passwordPatterns) {
+        const m = content.match(p);
+        if (m) { result.password = m[1]; break; }
+    }
+    for (const p of databasePatterns) {
+        const m = content.match(p);
+        if (m) { result.database = m[1]; break; }
+    }
+
+    // Need at least a database name to consider this valid
+    // MySQL database names cannot contain spaces — reject false positives like APP_NAME
+    if (!result.database || /\s/.test(result.database)) return null;
+
+    // Normalize 'localhost' → '127.0.0.1' to force TCP/IP (localhost uses Unix socket which often fails)
+    const host = result.host === 'localhost' ? '127.0.0.1' : (result.host || '127.0.0.1');
+    return {
+        host,
+        user: result.user || 'root',
+        password: result.password || '',
+        database: result.database,
+        source: result.source || source,
+    };
+}
+
+/**
+ * Determines whether a SQL query is read-only (SELECT, SHOW, DESCRIBE, EXPLAIN)
+ * or a write operation (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, etc.).
+ */
+function isReadOnlySQL(query: string): boolean {
+    const trimmed = query.trim().replace(/^\/\*.*?\*\//s, '').trim();
+    return /^(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|HELP)\b/i.test(trimmed);
+}
+
+/**
+ * Formats tab-separated MySQL --batch output into a readable aligned table.
+ */
+function formatMySQLOutput(raw: string): string {
+    const lines = raw.split('\n').filter(l => l.length > 0);
+    if (lines.length === 0) return '(no results)';
+
+    const rows = lines.map(line => line.split('\t'));
+    if (rows.length === 0) return '(no results)';
+
+    // Calculate column widths
+    const colCount = rows[0].length;
+    const widths: number[] = new Array(colCount).fill(0);
+    for (const row of rows) {
+        for (let i = 0; i < Math.min(row.length, colCount); i++) {
+            widths[i] = Math.max(widths[i], row[i].length);
+        }
+    }
+
+    // Format as aligned table with header separator
+    const formatted: string[] = [];
+    for (let r = 0; r < rows.length; r++) {
+        const cells = rows[r].map((cell, i) => cell.padEnd(widths[i] || 0));
+        formatted.push(cells.join(' | '));
+        if (r === 0) {
+            formatted.push(widths.map(w => '-'.repeat(w)).join('-+-'));
+        }
+    }
+
+    return formatted.join('\n');
+}
+
+/**
+ * Language Model Tool — allows Copilot to execute MySQL/MariaDB queries
+ * on the remote SSH server. Auto-discovers DB credentials from project
+ * config files. On first use, shows discovered credentials for user
+ * confirmation. Write queries can require confirmation (configurable
+ * per server via `mysqlConfirmWrites`).
+ */
+class SSHMySQLQueryTool implements vscode.LanguageModelTool<SSHMySQLQueryInput> {
+    constructor(private readonly connectionManager: ConnectionManager) {}
+
+    private getConnection(connectionName?: string) {
+        const conn = connectionName
+            ? this.connectionManager.getActiveConnection(connectionName)
+            : this.connectionManager.getActiveConnections()[0];
+        if (!conn) {
+            const available = this.connectionManager.getActiveConnections().map(c => c.config.name);
+            throw new Error(
+                connectionName
+                    ? `No active SSH connection "${connectionName}". Available: ${available.join(', ') || 'none'}.`
+                    : `No active SSH connections. Connect via SSH FS Plus first. Available: ${available.join(', ') || 'none'}`
+            );
+        }
+        return conn;
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<SSHMySQLQueryInput>,
+        token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        const { query, connectionName } = options.input;
+        const conn = this.getConnection(connectionName);
+        const connName = conn.config.name;
+        const root = conn.config.root || '/';
+
+        // Resolve credentials: explicit params > cache > auto-discover
+        let creds: MySQLCredentials;
+
+        if (options.input.host || options.input.user || options.input.password || options.input.database) {
+            // Explicit credentials provided by the agent
+            // Normalize 'localhost' → '127.0.0.1' to force TCP/IP (Unix socket often fails)
+            const explicitHost = options.input.host === 'localhost' ? '127.0.0.1' : options.input.host;
+            creds = {
+                host: explicitHost || mysqlCredentialsCache.get(connName)?.host || '127.0.0.1',
+                user: options.input.user || mysqlCredentialsCache.get(connName)?.user || 'root',
+                password: options.input.password ?? mysqlCredentialsCache.get(connName)?.password ?? '',
+                database: options.input.database || mysqlCredentialsCache.get(connName)?.database || '',
+                source: 'explicit parameters',
+            };
+            // Update cache with explicit overrides
+            mysqlCredentialsCache.set(connName, creds);
+        } else if (mysqlCredentialsCache.has(connName)) {
+            creds = mysqlCredentialsCache.get(connName)!;
+        } else {
+            // Auto-discover
+            Logging.info`ChatTool sshfs_mysql_query: discovering MySQL credentials on ${connName}`;
+            const discovered = await discoverMySQLCredentials(conn.client, root, token);
+            if (!discovered) {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(
+                        `No MySQL credentials found in project files on "${connName}" (searched ${root} for config files up to 4 levels deep).\n\n` +
+                        `Please provide credentials explicitly by calling this tool with host, user, password, and database parameters, ` +
+                        `or ask the user for the database connection details.`
+                    )
+                ]);
+            }
+            mysqlCredentialsCache.set(connName, discovered);
+            creds = discovered;
+            Logging.info`ChatTool sshfs_mysql_query: found credentials in ${discovered.source} (db: ${discovered.database}, host: ${discovered.host})`;
+        }
+
+        // Use database override if provided in this call
+        const database = options.input.database || creds.database;
+
+        // Build the mysql command
+        // MYSQL_PWD env var is used instead of -p to avoid password in process list
+        const mysqlCmd = `MYSQL_PWD=${shellEscape(creds.password)} mysql` +
+            ` -h ${shellEscape(creds.host)}` +
+            ` -u ${shellEscape(creds.user)}` +
+            (database ? ` ${shellEscape(database)}` : '') +
+            ` --batch --column-names` +
+            ` -e ${shellEscape(query)}`;
+
+        Logging.info`ChatTool sshfs_mysql_query: executing query on ${connName} (db: ${database || 'none'})`;
+        Logging.debug`ChatTool sshfs_mysql_query: ${query.substring(0, 200)}`;
+
+        // Execute with 30s timeout
+        const channel = await toPromise<ClientChannel>(cb => conn.client.exec(mysqlCmd, cb)).catch(e => {
+            throw new Error(
+                `Failed to execute MySQL command on "${connName}": ${e instanceof Error ? e.message : String(e)}. ` +
+                `The SSH connection may have been lost.`
+            );
+        });
+
+        const output = await new Promise<string>((resolve) => {
+            const stdoutChunks: string[] = [];
+            const stderrChunks: string[] = [];
+            let resolved = false;
+
+            const finish = (result: string) => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                cancelDispose?.dispose();
+                resolve(result);
+            };
+
+            const timer = setTimeout(() => {
+                channel.close();
+                const partial = stdoutChunks.join('');
+                finish(partial ? partial + '\n... [query timed out after 30s]' : '(query timed out after 30s with no output)');
+            }, 30_000);
+
+            const cancelDispose = token?.onCancellationRequested(() => {
+                channel.close();
+                finish('[Query cancelled]');
+            });
+
+            channel.on('data', (chunk: Buffer) => stdoutChunks.push(chunk.toString('utf-8')));
+            channel.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk.toString('utf-8')));
+            channel.on('close', (code: number) => {
+                const stdout = stdoutChunks.join('');
+                const stderr = stderrChunks.join('').trim();
+
+                if (stderr) {
+                    // MySQL errors — check if credentials are wrong
+                    if (stderr.includes('Access denied') || stderr.includes('ERROR 1045')) {
+                        // Clear cached credentials so discovery runs again next time
+                        mysqlCredentialsCache.delete(connName);
+                        finish(
+                            `MySQL access denied (host: ${creds.host}, user: ${creds.user}, db: ${database || 'none'}).\n` +
+                            `Credentials were auto-discovered from: ${creds.source}\n\n` +
+                            `The cached credentials have been cleared. Please provide correct credentials ` +
+                            `by calling this tool with host, user, password, and database parameters, ` +
+                            `or ask the user for the correct database credentials.`
+                        );
+                        return;
+                    }
+                    if (!stdout) {
+                        finish(`MySQL error (exit code ${code}):\n${stderr}`);
+                        return;
+                    }
+                    // Has both stdout and stderr — include both
+                }
+
+                if (!stdout && !stderr) {
+                    if (isReadOnlySQL(query)) {
+                        finish('(query returned no results)');
+                    } else {
+                        finish(`Query executed successfully (exit code: ${code}).`);
+                    }
+                    return;
+                }
+
+                // Format the output
+                let result = '';
+                if (stdout) {
+                    result = formatMySQLOutput(stdout);
+                }
+                if (stderr) {
+                    result += (result ? '\n\n--- warnings ---\n' : '') + stderr;
+                }
+
+                // Truncate very large outputs
+                const MAX_OUTPUT = 50_000;
+                if (result.length > MAX_OUTPUT) {
+                    result = result.substring(0, MAX_OUTPUT) + `\n... [truncated at ${MAX_OUTPUT} chars]`;
+                }
+
+                // Add row count info for SELECT queries
+                if (isReadOnlySQL(query)) {
+                    const dataRows = stdout.split('\n').filter(l => l.length > 0).length - 1; // minus header
+                    if (dataRows >= 0) {
+                        result += `\n\n(${dataRows} row${dataRows !== 1 ? 's' : ''})`;
+                    }
+                }
+
+                finish(result);
+            });
+        });
+
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(output)
+        ]);
+    }
+
+    async prepareInvocation(
+        options: vscode.LanguageModelToolInvocationPrepareOptions<SSHMySQLQueryInput>,
+        token: vscode.CancellationToken
+    ): Promise<vscode.PreparedToolInvocation> {
+        const { query, connectionName } = options.input;
+        const conn = this.getConnection(connectionName);
+        const connName = conn.config.name;
+        const root = conn.config.root || '/';
+        const readOnly = isReadOnlySQL(query);
+        const confirmWrites = conn.config.mysqlConfirmWrites !== false; // default true
+
+        // Check if this is the first call (no cached credentials and no explicit ones)
+        const hasExplicit = !!(options.input.host || options.input.user || options.input.password || options.input.database);
+        const hasCached = mysqlCredentialsCache.has(connName);
+
+        if (!hasExplicit && !hasCached) {
+            // First call — discover credentials and show them for confirmation
+            const discovered = await discoverMySQLCredentials(conn.client, root, token);
+            if (discovered) {
+                // Cache them so invoke() can use them
+                mysqlCredentialsCache.set(connName, discovered);
+
+                return {
+                    invocationMessage: `MySQL query on ${connName} (db: ${discovered.database})`,
+                    confirmationMessages: {
+                        title: 'MySQL — Confirm Credentials',
+                        message: new vscode.MarkdownString(
+                            `Found MySQL credentials in **${discovered.source}**:\n\n` +
+                            `| Setting | Value |\n|---|---|\n` +
+                            `| Host | \`${discovered.host}\` |\n` +
+                            `| User | \`${discovered.user}\` |\n` +
+                            `| Database | \`${discovered.database}\` |\n` +
+                            `| Password | \`${'*'.repeat(Math.min(discovered.password.length, 8)) || '(empty)'}\` |\n\n` +
+                            `**Query:**\n\`\`\`sql\n${query}\n\`\`\`\n\n` +
+                            `Use these credentials? If not, click **Cancel** and provide different credentials in the chat.`
+                        ),
+                    },
+                };
+            }
+            // No credentials found — let invoke() handle the error message
+            return {
+                invocationMessage: `MySQL query on ${connName} (no credentials found)`,
+            };
+        }
+
+        // Subsequent calls — credentials are available
+        const creds = hasExplicit
+            ? { database: options.input.database || mysqlCredentialsCache.get(connName)?.database || '?' }
+            : mysqlCredentialsCache.get(connName)!;
+        const dbLabel = options.input.database || creds.database || '?';
+
+        // Write queries with confirmation enabled
+        if (!readOnly && confirmWrites) {
+            return {
+                invocationMessage: `MySQL write query on ${connName} (db: ${dbLabel})`,
+                confirmationMessages: {
+                    title: 'MySQL — Confirm Write Query',
+                    message: new vscode.MarkdownString(
+                        `Execute on **${connName}** (database: \`${dbLabel}\`)?\n\n` +
+                        `\`\`\`sql\n${query}\n\`\`\`\n\n` +
+                        `⚠️ This is a **write operation** that will modify data.`
+                    ),
+                },
+            };
+        }
+
+        // Read queries or writes without confirmation
+        return {
+            invocationMessage: `MySQL ${readOnly ? 'query' : 'write'} on ${connName} (db: ${dbLabel}): ${query.substring(0, 80)}${query.length > 80 ? '...' : ''}`,
+        };
+    }
+}
+
 /**
  * Registers Language Model Tools for Copilot agent mode.
  * Requires VS Code 1.95+ with the Language Model Tools API.
@@ -1589,5 +2025,12 @@ export function registerChatTools(
         Logging.info`Registered Language Model Tool: sshfs_search_text — Copilot text search via 'grep'`;
     } catch (e) {
         Logging.warning`Failed to register sshfs_search_text: ${e}`;
+    }
+
+    try {
+        subscribe(vscode.lm.registerTool('sshfs_mysql_query', new SSHMySQLQueryTool(connectionManager)));
+        Logging.info`Registered Language Model Tool: sshfs_mysql_query — Copilot MySQL queries via SSH`;
+    } catch (e) {
+        Logging.warning`Failed to register sshfs_mysql_query: ${e}`;
     }
 }

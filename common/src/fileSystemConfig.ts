@@ -119,6 +119,8 @@ export interface FileSystemConfig extends ConnectConfig {
   flags?: string[];
   /** Specifies the character encoding used for the SSH terminal. If undefined, UTF-8 will be used */
   encoding?: string;
+  /** Whether to require user confirmation before executing write SQL queries (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE). Defaults to true */
+  mysqlConfirmWrites?: boolean;
   /** Internal property saying where this config comes from. Undefined if this config is merged or something */
   _location?: ConfigLocation;
   /** Internal property keeping track of where this config comes from (including merges) */

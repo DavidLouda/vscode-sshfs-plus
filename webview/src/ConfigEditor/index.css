@@ -37,6 +37,10 @@ div.ConfigEditor .section {
     margin-top: 12px;
     border: 1px solid var(--vscode-settings-dropdownBorder);
     border-radius: 6px;
+    overflow: visible;
+}
+
+div.ConfigEditor .section.collapsed {
     overflow: hidden;
 }
 

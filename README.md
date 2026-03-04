@@ -1,4 +1,6 @@
 
+> ⚠️ **SSH FS Plus is no longer maintained.** Development continues in [Remote Bridge](https://marketplace.visualstudio.com/items?itemName=DavidLouda.remote-bridge) — which supports importing your existing SSH FS Plus settings.
+
 # SSH FS Plus
 
 ![Logo](./resources/Logo.png)

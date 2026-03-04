@@ -1,6 +1,13 @@
 
 # Changelog
 
+## v2.8.1 — SSH FS Plus (2026-03-04)
+
+### Notice
+
+- **End of development** — SSH FS Plus is no longer maintained. Development continues in [Remote Bridge](https://marketplace.visualstudio.com/items?itemName=DavidLouda.remote-bridge), a new extension built from the ground up that supports importing settings from SSH FS Plus.
+- **Migration notice** — a one-time notification is shown on activation, with a direct link to Remote Bridge.
+
 ## v2.8.0 — SSH FS Plus (2026-02-27)
 
 ### New

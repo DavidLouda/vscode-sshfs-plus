@@ -191,6 +191,21 @@ export function activate(context: vscode.ExtensionContext) {
   Logging.info`Version history: ${versionHistory.map(v => v.join(':')).join(' > ')}`;
   context.globalState.update('versionHistory', versionHistory);
 
+  // One-time migration notice — shown once per install, then never again
+  const migrationNoticed = context.globalState.get<boolean>('migrationNoticed', false);
+  if (!migrationNoticed) {
+    context.globalState.update('migrationNoticed', true);
+    vscode.window.showInformationMessage(
+      'SSH FS Plus is no longer maintained. Its successor Remote Bridge continues development and supports importing your existing SSH FS Plus settings.',
+      'Open Remote Bridge',
+      'Dismiss'
+    ).then(choice => {
+      if (choice === 'Open Remote Bridge') {
+        vscode.env.openExternal(vscode.Uri.parse('https://marketplace.visualstudio.com/items?itemName=DavidLouda.remote-bridge'));
+      }
+    });
+  }
+
   // Really too bad we *need* the ExtensionContext for relative resources
   // I really don't like having to pass context to *everything*, so let's do it this way
   setGetExtensionUri(path => vscode.Uri.joinPath(context.extensionUri, path));
